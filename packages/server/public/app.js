@@ -204,6 +204,20 @@ function persistJoin(tableId, token) {
   if (token) localStorage.setItem('batak.reconnectToken', token);
 }
 
+function leaveTable() {
+  if (!currentTableId) return;
+  socket.emit('table:leave', { tableId: currentTableId });
+  currentTableId = null;
+  reconnectToken = null;
+  latestState = null;
+  localStorage.removeItem('batak.tableId');
+  localStorage.removeItem('batak.reconnectToken');
+  showScreen('lobby');
+  refreshLobby();
+}
+$('#leaveWaitingBtn').addEventListener('click', leaveTable);
+$('#leaveGameBtn').addEventListener('click', leaveTable);
+
 function joinTable(tableId) {
   socket.emit('table:join', { playerId, name: currentName(), tableId, reconnectToken }, (res) => {
     if (res.error) return showToast(res.error);

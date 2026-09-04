@@ -188,6 +188,20 @@ export class Table {
     return seatIdx;
   }
 
+  /** Fully vacates a seat (only safe before the game has started). */
+  freeSeat(idx: PlayerIndex): void {
+    this.seats[idx] = null;
+    this.migrateHostIfNeeded();
+  }
+
+  removeSpectator(socketId: string): void {
+    this.spectators = this.spectators.filter((s) => s.socketId !== socketId);
+  }
+
+  isEmpty(): boolean {
+    return this.seats.every((s) => s === null) && this.spectators.length === 0;
+  }
+
   disconnectSocket(socketId: string): PlayerIndex | null {
     const idx = this.findSeatBySocketId(socketId);
     if (idx !== null) {

@@ -1,4 +1,5 @@
 * { box-sizing: border-box; }
+html, body { max-width: 100%; overflow-x: hidden; }
 :root {
   --felt: #0b4a2a;
   --felt-dark: #052e19;
@@ -55,6 +56,7 @@ button:disabled { background: #444; color: #999; cursor: not-allowed; transform:
 }
 .card.wide { max-width: 640px; }
 .lobby-actions { display: flex; gap: 16px; flex-wrap: wrap; }
+.lobby-actions .card { flex: 1 1 280px; }
 
 .mode-toggles { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
 .toggle { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; opacity: 1; }
@@ -271,6 +273,15 @@ button:disabled { background: #444; color: #999; cursor: not-allowed; transform:
 .playing-card.disabled { opacity: 0.42; cursor: not-allowed; filter: grayscale(0.3); }
 .playing-card.selected { outline: 3px solid var(--gold); transform: translateY(-8px); }
 
+.btn-leave {
+  background: rgba(179, 45, 45, 0.25);
+  border: 1px solid #b32d2d;
+  color: #ffb3b3;
+}
+.btn-leave:hover { background: rgba(179, 45, 45, 0.45); }
+#scoreboard-wrap { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+#scoreboard-wrap > div { flex: 1 1 auto; }
+
 .icon-btn {
   background: transparent;
   border: 1px solid var(--panel-border);
@@ -359,7 +370,45 @@ button:disabled { background: #444; color: #999; cursor: not-allowed; transform:
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
 
+/* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-  #table-felt { grid-template-columns: 0.6fr 2fr 0.6fr; padding: 10px; }
-  .playing-card { width: 44px; height: 64px; }
+  body { padding: 8px; }
+  h1 { font-size: 20px; }
+  .card { padding: 10px 12px; }
+
+  #table-felt {
+    grid-template-columns: 0.7fr 2fr 0.7fr;
+    padding: 8px;
+    min-height: 280px;
+    gap: 4px;
+  }
+  .seat-pos { min-width: 60px; }
+  .seat-pos .seat-name { font-size: 11px; padding: 3px 8px; }
+  .seat-pos .card-back { width: 16px; height: 24px; margin-left: -8px; }
+  .seat-pos .card-count { font-size: 10px; }
+
+  .playing-card { width: 42px; height: 60px; padding: 3px 4px; }
+  .playing-card .corner { font-size: 11px; }
+  .playing-card .pip { font-size: 16px; }
+  .playing-card.mini { width: 32px; height: 46px; }
+  .playing-card.mini .corner { font-size: 9px; }
+  .playing-card.mini .pip { font-size: 12px; }
+
+  .score-chip { font-size: 11px; padding: 4px 9px; gap: 5px; }
+  #status-line { font-size: 11px; padding: 4px 10px; }
+
+  .rules-grid { grid-template-columns: 1fr; }
+  input, button, select { font-size: 14px; padding: 8px 10px; }
+}
+
+@media (max-width: 420px) {
+  #table-felt { grid-template-columns: 0.6fr 2.2fr 0.6fr; min-height: 240px; }
+  .seat-pos { min-width: 48px; }
+  .seat-pos .seat-name { font-size: 10px; padding: 2px 6px; }
+  .trick-slot[data-pos="left"] { left: 2%; }
+  .trick-slot[data-pos="right"] { right: 2%; }
+  .playing-card { width: 36px; height: 52px; }
+  .playing-card .corner { font-size: 10px; }
+  .playing-card .pip { font-size: 14px; }
+  h1 { font-size: 18px; }
 }

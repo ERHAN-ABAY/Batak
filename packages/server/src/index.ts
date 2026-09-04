@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { Server, Socket } from 'socket.io';
 import { BatakError, Bid, GameEndMode, PenaltyMode, PlayerIndex, ScoringMode, Suit } from '@batak/engine';
 import { decideBotBid, decideBotExchange, decideBotPlay, decideBotTrumpSuit } from './bot.js';
-import { createTable, findTableBySocket, getTable, listOpenTables } from './rooms.js';
+import { createTable, findTableBySocket, getTable, listOpenTables, removeTable } from './rooms.js';
 import { Table } from './table.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -365,6 +365,34 @@ io.on('connection', (socket: Socket) => {
     table.chatHistory.push({ name, text, ts: Date.now() });
     if (table.chatHistory.length > 200) table.chatHistory.splice(0, table.chatHistory.length - 200);
     broadcast(table);
+  });
+
+  socket.on('table:leave', (payload: { tableId: string }, ack?: (res: unknown) => void) => {
+    const table = getTable(payload.tableId);
+    if (!table) return ack?.({ ok: true });
+
+    const seatIdx = table.findSeatBySocketId(socket.id);
+    if (seatIdx !== null) {
+      clearReconnectTimer(table.id, seatIdx);
+      if (!table.game) {
+        table.freeSeat(seatIdx);
+      } else {
+        table.disconnectSocket(socket.id);
+        const seat = table.seats[seatIdx];
+        if (seat) seat.isBot = true; // explicit leave - take over immediately, don't wait 60s
+      }
+    } else {
+      table.removeSpectator(socket.id);
+    }
+
+    socket.leave(table.id);
+    if (table.isEmpty()) {
+      clearTurnTimer(table.id);
+      removeTable(table.id);
+    } else {
+      broadcast(table);
+    }
+    ack?.({ ok: true });
   });
 
   socket.on('disconnect', () => {
