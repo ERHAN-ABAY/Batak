@@ -5,15 +5,9 @@ import { DEFAULT_MATCH_CONFIG } from '../src/types.js';
 const config = DEFAULT_MATCH_CONFIG;
 
 describe('bidStrength ordering', () => {
-  it('ranks kozsuz above koz for the same trick value', () => {
-    expect(bidStrength({ player: 0, type: 'kozsuz', value: 7 }, config)).toBeGreaterThan(
-      bidStrength({ player: 0, type: 'koz', value: 7 }, config)
-    );
-  });
-
-  it('ranks elsiz above the highest kozsuz', () => {
+  it('ranks elsiz above the highest koz bid', () => {
     expect(bidStrength({ player: 0, type: 'elsiz' }, config)).toBeGreaterThan(
-      bidStrength({ player: 0, type: 'kozsuz', value: 13 }, config)
+      bidStrength({ player: 0, type: 'koz', value: config.maxBid }, config)
     );
   });
 
@@ -51,10 +45,10 @@ describe('validateBid', () => {
     expect(r.valid).toBe(true);
   });
 
-  it('accepts kozsuz at the same value as a standing koz bid', () => {
+  it('rejects an equal-value koz bid (must strictly beat the standing bid)', () => {
     const current = { player: 0, type: 'koz' as const, value: 8 };
-    const r = validateBid({ player: 1, type: 'kozsuz', value: 8 }, current, config);
-    expect(r.valid).toBe(true);
+    const r = validateBid({ player: 1, type: 'koz', value: 8 }, current, config);
+    expect(r.valid).toBe(false);
   });
 });
 
@@ -65,8 +59,7 @@ describe('targetForBid', () => {
   it('elsiz targets 0 tricks', () => {
     expect(targetForBid({ player: 0, type: 'elsiz' }, config)).toBe(0);
   });
-  it('koz/kozsuz target their declared value', () => {
+  it('koz targets its declared value', () => {
     expect(targetForBid({ player: 0, type: 'koz', value: 9 }, config)).toBe(9);
-    expect(targetForBid({ player: 0, type: 'kozsuz', value: 6 }, config)).toBe(6);
   });
 });

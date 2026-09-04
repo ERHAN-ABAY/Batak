@@ -19,12 +19,7 @@ export function decideBotBid(game: Game, seat: PlayerIndex): Bid {
   strength += Math.max(0, longestSuitLength - 3);
 
   const value = Math.min(game.config.maxBid, game.config.minBid + Math.max(0, strength - 1));
-  const type: 'koz' | 'kozsuz' = game.config.fixedSpadesTrump
-    ? 'koz'
-    : strength >= 5 && Math.random() < 0.35
-      ? 'kozsuz'
-      : 'koz';
-  const candidate: Bid = { player: seat, type, value };
+  const candidate: Bid = { player: seat, type: 'koz', value };
 
   const currentStrength = state.highestBid ? bidStrength(state.highestBid, game.config) : -1;
   if (strength >= 3 && bidStrength(candidate, game.config) > currentStrength) {

@@ -189,7 +189,7 @@ export class Game {
   }
 
   private resolveAuction(winningBid: Bid): void {
-    const type = winningBid.type as 'koz' | 'kozsuz' | 'gizli' | 'elsiz';
+    const type = winningBid.type as 'koz' | 'gizli' | 'elsiz';
     const target = targetForBid(winningBid, this.config);
     this.contract = {
       declarer: winningBid.player,
@@ -211,19 +211,17 @@ export class Game {
       return;
     }
 
-    this.enterTrumpOrPlay(winningBid.player, type);
+    this.enterTrumpOrPlay(winningBid.player);
   }
 
-  private enterTrumpOrPlay(declarer: PlayerIndex, type: Contract['type']): void {
-    if (type === 'koz' && this.config.fixedSpadesTrump) {
+  /** Every contract always names a trump suit before play - there is no no-trump ("kozsuz") contract. */
+  private enterTrumpOrPlay(declarer: PlayerIndex): void {
+    if (this.config.fixedSpadesTrump) {
       this.contract!.trumpSuit = 'S';
       this.phase = 'PLAYING';
       this.trickLeader = declarer;
-    } else if (type === 'koz') {
-      this.phase = 'CHOOSING_TRUMP';
     } else {
-      this.phase = 'PLAYING';
-      this.trickLeader = declarer;
+      this.phase = 'CHOOSING_TRUMP';
     }
   }
 
@@ -247,7 +245,7 @@ export class Game {
       remaining.splice(idx, 1);
     }
     this.hands[player] = remaining;
-    this.enterTrumpOrPlay(player, this.contract.type);
+    this.enterTrumpOrPlay(player);
   }
 
   chooseTrump(player: PlayerIndex, suit: Suit): void {

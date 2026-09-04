@@ -93,47 +93,40 @@ describe('Game - gameEndMode=targetScore (default)', () => {
   });
 });
 
-describe('Game - kozsuz/gizli/elsiz skip trump selection', () => {
-  it('kozsuz goes straight to PLAYING with no trump suit', () => {
-    const game = new Game(makePlayers(), { handsPerMatch: 1 });
-    game.startHand(7);
-    game.submitBid(1, { player: 1, type: 'kozsuz', value: 6 });
-    game.submitBid(2, { player: 2, type: 'pas' });
-    game.submitBid(3, { player: 3, type: 'pas' });
-    game.submitBid(0, { player: 0, type: 'pas' });
-    expect(game.phase).toBe('PLAYING');
-    expect(game.getPublicState(0).contract?.trumpSuit).toBeNull();
-  });
-
-  it('gizli targets all 13 tricks with no trump', () => {
+describe('Game - gizli/elsiz always require trump selection too', () => {
+  it('gizli targets the full hand and still requires a trump choice (no "kozsuz" contract exists)', () => {
     const game = new Game(makePlayers(), { handsPerMatch: 1 });
     game.startHand(7);
     game.submitBid(1, { player: 1, type: 'gizli' });
     game.submitBid(2, { player: 2, type: 'pas' });
     game.submitBid(3, { player: 3, type: 'pas' });
     game.submitBid(0, { player: 0, type: 'pas' });
-    expect(game.phase).toBe('PLAYING');
+    expect(game.phase).toBe('CHOOSING_TRUMP');
     const state = game.getPublicState(0);
     expect(state.contract?.type).toBe('gizli');
-    expect(state.contract?.target).toBe(13);
+    expect(state.contract?.target).toBe(game.config.maxBid);
     expect(state.contract?.trumpSuit).toBeNull();
+    game.chooseTrump(1, 'S');
+    expect(game.phase).toBe('PLAYING');
+    expect(game.getPublicState(0).contract?.trumpSuit).toBe('S');
   });
 
-  it('elsiz targets zero tricks', () => {
+  it('elsiz targets zero tricks and also requires a trump choice', () => {
     const game = new Game(makePlayers(), { handsPerMatch: 1 });
     game.startHand(7);
     game.submitBid(1, { player: 1, type: 'elsiz' });
     game.submitBid(2, { player: 2, type: 'pas' });
     game.submitBid(3, { player: 3, type: 'pas' });
     game.submitBid(0, { player: 0, type: 'pas' });
+    expect(game.phase).toBe('CHOOSING_TRUMP');
     expect(game.getPublicState(0).contract?.target).toBe(0);
   });
 
-  it('an elsiz bid outranks any koz/kozsuz bid, forcing them to raise or pass', () => {
+  it('an elsiz bid outranks any koz bid, forcing them to raise or pass', () => {
     const game = new Game(makePlayers(), { handsPerMatch: 1 });
     game.startHand(7);
     game.submitBid(1, { player: 1, type: 'elsiz' });
-    expect(() => game.submitBid(2, { player: 2, type: 'kozsuz', value: 13 })).toThrow();
+    expect(() => game.submitBid(2, { player: 2, type: 'koz', value: game.config.maxBid })).toThrow();
   });
 });
 
@@ -181,10 +174,9 @@ describe('Game - fixedSpadesTrump (Maça modu)', () => {
     expect(game.getPublicState(0).contract?.trumpSuit).toBe('S');
   });
 
-  it('rejects kozsuz/gizli/elsiz bids', () => {
+  it('rejects gizli/elsiz bids', () => {
     const game = new Game(makePlayers(), { handsPerMatch: 1, fixedSpadesTrump: true });
     game.startHand(7);
-    expect(() => game.submitBid(1, { player: 1, type: 'kozsuz', value: 6 })).toThrow();
     expect(() => game.submitBid(1, { player: 1, type: 'gizli' })).toThrow();
     expect(() => game.submitBid(1, { player: 1, type: 'elsiz' })).toThrow();
   });
@@ -195,7 +187,7 @@ describe('Game - partnership (eşli) + open hand (açık)', () => {
     const game = new Game(makePlayers(), { handsPerMatch: 1, partnership: true, openHand: true });
     game.startHand(7);
     const declarer = game.whoseTurn() as PlayerIndex;
-    game.submitBid(declarer, { player: declarer, type: 'kozsuz', value: 6 });
+    game.submitBid(declarer, { player: declarer, type: 'koz', value: 6 });
     let next = ((declarer + 1) % 4) as PlayerIndex;
     while (game.phase === 'BIDDING') {
       game.submitBid(next, { player: next, type: 'pas' });
@@ -216,12 +208,13 @@ describe('Game - partnership (eşli) + open hand (açık)', () => {
     const game = new Game(makePlayers(), { handsPerMatch: 1, partnership: true });
     game.startHand(7);
     const declarer = game.whoseTurn() as PlayerIndex;
-    game.submitBid(declarer, { player: declarer, type: 'kozsuz', value: 5 });
+    game.submitBid(declarer, { player: declarer, type: 'koz', value: 5 });
     let next = ((declarer + 1) % 4) as PlayerIndex;
     while (game.phase === 'BIDDING') {
       game.submitBid(next, { player: next, type: 'pas' });
       next = ((next + 1) % 4) as PlayerIndex;
     }
+    game.chooseTrump(declarer, 'S');
     autoPlayHand(game);
     const partner = ((declarer + 2) % 4) as PlayerIndex;
     expect(game.scores[declarer]).toBe(game.scores[partner]);
@@ -301,7 +294,7 @@ describe('Game - illegal actions carry typed error codes', () => {
     game.submitBid(2, { player: 2, type: 'pas' });
     game.submitBid(3, { player: 3, type: 'pas' });
     game.submitBid(0, { player: 0, type: 'pas' });
-    expect(game.phase).toBe('PLAYING'); // gizli, no trump selection needed
+    expect(game.phase).toBe('CHOOSING_TRUMP'); // every contract now requires a trump choice
     try {
       game.submitBid(2, { player: 2, type: 'pas' });
       throw new Error('expected to throw');

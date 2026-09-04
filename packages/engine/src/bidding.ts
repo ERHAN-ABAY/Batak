@@ -5,10 +5,9 @@ import { Bid, MatchConfig } from './types.js';
  * Strength ordering for the auction. Each new (non-pass) bid must strictly
  * exceed the current highest bid's strength.
  *
- *   koz(v)    -> v*10          (50..130 for v in 5..13)
- *   kozsuz(v) -> v*10 + 5      (55..135) - same trick count beats a colored bid
- *   elsiz     -> 140           - committing to zero tricks is very hard to pull off
- *   gizli     -> 200           - blind 13-trick bid, the strongest possible contract
+ *   koz(v) -> v*10   (50..130 for v in 5..13)
+ *   elsiz  -> 140    - committing to zero tricks is very hard to pull off
+ *   gizli  -> 200    - blind bid for the whole hand, the strongest possible contract
  */
 export function bidStrength(bid: Bid, config: MatchConfig): number {
   switch (bid.type) {
@@ -16,8 +15,6 @@ export function bidStrength(bid: Bid, config: MatchConfig): number {
       return -1;
     case 'koz':
       return (bid.value ?? 0) * 10;
-    case 'kozsuz':
-      return (bid.value ?? 0) * 10 + 5;
     case 'elsiz':
       return 140;
     case 'gizli':
@@ -50,7 +47,7 @@ export function validateBid(
     };
   }
 
-  if (bid.type === 'koz' || bid.type === 'kozsuz') {
+  if (bid.type === 'koz') {
     const v = bid.value;
     if (v === undefined || !Number.isInteger(v)) {
       return { valid: false, code: 'INVALID_BID', reason: 'value must be an integer' };
@@ -88,7 +85,6 @@ export function targetForBid(bid: Bid, config: MatchConfig): number {
     case 'elsiz':
       return 0;
     case 'koz':
-    case 'kozsuz':
       return bid.value ?? 0;
     default:
       return 0;

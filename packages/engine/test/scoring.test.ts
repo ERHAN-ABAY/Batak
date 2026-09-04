@@ -22,13 +22,6 @@ describe('scoreHand - solo, takenTricks / negativeBid (defaults)', () => {
     expect(delta[0]).toBe(-8);
   });
 
-  it('kozsuz uses the same declarer formula as koz', () => {
-    const contract: Contract = { declarer: 1, type: 'kozsuz', target: 6, trumpSuit: null };
-    const tricksWon = { 0: 3, 1: 6, 2: 2, 3: 2 };
-    const delta = scoreHand(contract, tricksWon, config);
-    expect(delta[1]).toBe(6);
-  });
-
   it('gizli (target = maxBid) succeeds only by taking every trick', () => {
     const contract: Contract = { declarer: 2, type: 'gizli', target: 13, trumpSuit: null };
     const tricksWon = { 0: 0, 1: 0, 2: 13, 3: 0 };

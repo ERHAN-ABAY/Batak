@@ -71,7 +71,7 @@ describe('legalPlays - void in led suit', () => {
     expect(legalPlays(hand, trick, 'S')).toEqual(hand);
   });
 
-  it('discards freely whenever there is no trump suit in play (kozsuz/gizli/elsiz)', () => {
+  it('discards freely whenever there is no trump suit in play (trumpSuit=null)', () => {
     const hand = [c(5, 'D'), c(3, 'C'), c(14, 'S')];
     const trick = [{ player: 0 as const, card: c(9, 'H') }];
     expect(legalPlays(hand, trick, null)).toEqual(hand);
@@ -114,7 +114,7 @@ describe('trickWinner', () => {
     expect(trickWinner(trick, 'S')).toBe(1);
   });
 
-  it('highest of led suit wins with no trump suit in play (kozsuz)', () => {
+  it('highest of led suit wins with no trump suit in play (trumpSuit=null)', () => {
     const trick = [
       { player: 0 as const, card: c(9, 'H') },
       { player: 1 as const, card: c(14, 'S') }, // off-suit, irrelevant

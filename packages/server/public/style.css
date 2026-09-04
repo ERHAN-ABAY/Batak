@@ -273,6 +273,24 @@ button:disabled { background: #444; color: #999; cursor: not-allowed; transform:
 .playing-card.disabled { opacity: 0.42; cursor: not-allowed; filter: grayscale(0.3); }
 .playing-card.selected { outline: 3px solid var(--gold); transform: translateY(-8px); }
 
+.trump-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(180deg, #3a2e10, #241c09);
+  border: 2px solid var(--gold);
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(232, 193, 92, 0.35);
+  white-space: nowrap;
+}
+.trump-badge .suit { font-size: 20px; }
+.trump-badge .suit.red { color: #ff6b6b; }
+.trump-badge.pending { border-style: dashed; opacity: 0.8; font-weight: 600; }
+
 .btn-leave {
   background: rgba(179, 45, 45, 0.25);
   border: 1px solid #b32d2d;

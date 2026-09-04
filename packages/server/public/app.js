@@ -310,7 +310,7 @@ function renderWaiting(state) {
 }
 
 // ---------- Rendering the game screen ----------
-const CONTRACT_LABEL = { koz: 'Koz', kozsuz: 'Kozsuz', gizli: 'Gizli', elsiz: 'Elsiz' };
+const CONTRACT_LABEL = { koz: 'Koz', gizli: 'Gizli', elsiz: 'Elsiz' };
 
 function relPos(seatIndex, mySeat) {
   const base = mySeat === null ? 0 : mySeat;
@@ -338,6 +338,30 @@ function renderScoreboard(state) {
     chip.appendChild(el('span', 'name', p.name || '(boş)'));
     chip.appendChild(el('span', 'pts', String(p.score)));
     header.appendChild(chip);
+  }
+}
+
+function renderTrumpBadge(state) {
+  const badge = $('#trumpBadge');
+  const contract = state.game.contract;
+  if (!contract) {
+    badge.classList.add('hidden');
+    return;
+  }
+  badge.classList.remove('hidden');
+  const declarerName = state.game.players[contract.declarer]?.name ?? '';
+  const contractLabel = CONTRACT_LABEL[contract.type] || contract.type;
+  badge.innerHTML = '';
+  if (contract.trumpSuit) {
+    badge.classList.remove('pending');
+    badge.appendChild(document.createTextNode('Koz: '));
+    badge.appendChild(
+      el('span', 'suit' + (RED_SUITS.has(contract.trumpSuit) ? ' red' : ''), SUIT_SYMBOL[contract.trumpSuit])
+    );
+    badge.appendChild(document.createTextNode(` — ${declarerName}: ${contractLabel} ${contract.target}`));
+  } else {
+    badge.classList.add('pending');
+    badge.textContent = `Koz seçiliyor... (${declarerName})`;
   }
 }
 
@@ -497,12 +521,11 @@ function renderBidPanel(state) {
   };
 
   row.appendChild(bidBtn(maca ? 'Teklif Ver' : 'Koz', () => ({ type: 'koz', value: Number(select.value) })));
-  if (!maca) row.appendChild(bidBtn('Kozsuz', () => ({ type: 'kozsuz', value: Number(select.value) })));
   panel.appendChild(row);
 
   const row2 = el('div', 'row');
   if (!maca) {
-    row2.appendChild(bidBtn('Gizli (13, kozsuz)', () => ({ type: 'gizli' })));
+    row2.appendChild(bidBtn('Gizli (tüm el, koz sonra seçilir)', () => ({ type: 'gizli' })));
     row2.appendChild(bidBtn('Elsiz (0 el)', () => ({ type: 'elsiz' })));
   }
   row2.appendChild(bidBtn('Pas', () => ({ type: 'pas' })));
@@ -631,6 +654,7 @@ function sendChat() {
 function renderGame(state) {
   showScreen('game');
   renderScoreboard(state);
+  renderTrumpBadge(state);
   renderSeats(state);
   renderTrick(state);
   renderOpenHandPanel(state);

@@ -1,11 +1,13 @@
 /**
  * Core domain types for the Batak rule engine.
  *
- * Design note: all four well-known Turkish Batak contract types (koz,
- * kozsuz, gizli, elsiz) live inside ONE unified bidding auction. A table
- * never needs a separate "game mode" selector — which contract gets played
- * simply depends on what the players bid during that hand's auction. This
- * mirrors how real Turkish Batak sites work.
+ * Design note: all Turkish Batak contract types (koz, gizli, elsiz) live
+ * inside ONE unified bidding auction. A table never needs a separate "game
+ * mode" selector — which contract gets played simply depends on what the
+ * players bid during that hand's auction. This mirrors how real Turkish
+ * Batak sites work. A trump suit is always chosen for every contract
+ * (there is no no-trump "kozsuz" bid) except in "Maça" mode, where trump
+ * is always forced to Spades.
  */
 
 export type Suit = 'S' | 'H' | 'D' | 'C'; // Spades, Hearts, Diamonds, Clubs
@@ -41,21 +43,23 @@ export function teamOf(player: PlayerIndex): 0 | 1 {
 }
 
 /**
- * Bid types:
- *  - 'pas'    : player passes for this auction
- *  - 'koz'    : bids `value` tricks (5-13) and will name a trump suit if won
- *  - 'kozsuz' : bids `value` tricks (5-13), no trump suit for the whole hand
- *  - 'gizli'  : blind bid - commits to taking ALL 13 tricks, no trump,
- *               declared before rearranging/looking closely at the hand.
- *               Highest risk / highest reward contract.
- *  - 'elsiz'  : commits to taking ZERO tricks for the whole hand (no trump).
+ * Bid types. A koz (trump) suit is ALWAYS chosen for the winning bid before
+ * play starts (CHOOSING_TRUMP phase) - there is no no-trump ("kozsuz")
+ * contract in this game; the only exception is "Maça" mode, where trump is
+ * always forced to Spades automatically.
+ *  - 'pas'   : player passes for this auction
+ *  - 'koz'   : bids `value` tricks (5-13) and will name a trump suit if won
+ *  - 'gizli' : blind bid - commits to taking ALL tricks, trump named after
+ *              winning, declared before rearranging/looking closely at the
+ *              hand. Highest risk / highest reward contract.
+ *  - 'elsiz' : commits to taking ZERO tricks for the whole hand.
  */
-export type BidType = 'pas' | 'koz' | 'kozsuz' | 'gizli' | 'elsiz';
+export type BidType = 'pas' | 'koz' | 'gizli' | 'elsiz';
 
 export interface Bid {
   player: PlayerIndex;
   type: BidType;
-  /** Trick target, only meaningful for 'koz' | 'kozsuz' (range MIN_BID..13). */
+  /** Trick target, only meaningful for 'koz' (range minBid..maxBid). */
   value?: number;
 }
 
@@ -75,9 +79,10 @@ export interface TrickCard {
 
 export interface Contract {
   declarer: PlayerIndex;
-  type: 'koz' | 'kozsuz' | 'gizli' | 'elsiz';
-  /** Trick target the declarer must reach (13 for gizli, 0 for elsiz). */
+  type: 'koz' | 'gizli' | 'elsiz';
+  /** Trick target the declarer must reach (maxBid for gizli, 0 for elsiz). */
   target: number;
+  /** Always set once the contract is playable - trump is never optional. */
   trumpSuit: Suit | null;
 }
 
@@ -89,9 +94,9 @@ export interface HandResult {
   scoreDelta: Record<PlayerIndex, number>;
 }
 
-/** How a successful (made) 'koz'/'kozsuz'/'gizli' contract is scored. */
+/** How a successful (made) 'koz'/'gizli' contract is scored. */
 export type ScoringMode = 'takenTricks' | 'bidOnly' | 'bidPlusOvertricks';
-/** How a failed (batak) 'koz'/'kozsuz'/'gizli' contract is penalized. */
+/** How a failed (batak) 'koz'/'gizli' contract is penalized. */
 export type PenaltyMode = 'negativeBid' | 'negativeTaken' | 'fixedPenalty';
 /** How a full match ends. */
 export type GameEndMode = 'targetScore' | 'fixedHands';
@@ -99,9 +104,9 @@ export type GameEndMode = 'targetScore' | 'fixedHands';
 export type AllPassAction = 'redeal' | 'dealerTakesMinimum';
 
 export interface MatchConfig {
-  /** Minimum trick count for a 'koz' / 'kozsuz' bid. */
+  /** Minimum trick count for a 'koz' bid. */
   minBid: number;
-  /** Maximum trick count for a 'koz' / 'kozsuz' bid (always 13 = the whole hand at most). */
+  /** Maximum trick count for a 'koz' bid (also the full hand size). */
   maxBid: number;
 
   /**
@@ -170,9 +175,9 @@ export interface MatchConfig {
   openHand: boolean;
   /**
    * "Maça" mode: trump is always forced to Spades. The auction only
-   * accepts 'koz' (and 'pas') bids - 'kozsuz' / 'gizli' / 'elsiz' are
-   * disabled, and the winning declarer never chooses a suit; the
-   * CHOOSING_TRUMP phase is skipped entirely.
+   * accepts 'koz' (and 'pas') bids - 'gizli' / 'elsiz' are disabled, and
+   * the winning declarer never chooses a suit; the CHOOSING_TRUMP phase
+   * is skipped entirely.
    */
   fixedSpadesTrump: boolean;
 
