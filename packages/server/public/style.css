@@ -269,6 +269,82 @@ button:disabled { background: #444; color: #999; cursor: not-allowed; transform:
 .playing-card.mini .pip { font-size: 16px; }
 .playing-card:not(.disabled):hover { transform: translateY(-8px); box-shadow: 0 8px 14px rgba(0,0,0,0.5); }
 .playing-card.disabled { opacity: 0.42; cursor: not-allowed; filter: grayscale(0.3); }
+.playing-card.selected { outline: 3px solid var(--gold); transform: translateY(-8px); }
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  font-size: 16px;
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+.hint { font-size: 12px; opacity: 0.7; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.rules-details {
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 10px 0;
+}
+.rules-details summary { cursor: pointer; font-weight: 600; }
+.rules-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+.rules-grid label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 4px;
+}
+.rules-grid select, .rules-grid input { width: 100%; }
+
+.seat-list li.bot { border-right: 3px solid #8a6fd4; }
+.seat-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 6px;
+  background: rgba(255,255,255,0.15);
+}
+.seat-badge.host { background: var(--gold); color: #222; }
+.seat-badge.bot { background: #8a6fd4; }
+
+#chat-panel { max-width: 100%; }
+#chatLog {
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+#chatLog .msg strong { color: var(--gold); }
+#chatInput { flex: 1; min-width: 120px; }
+
+.seat-pos .bot-tag { font-size: 10px; color: #c8b4ff; }
+
+@keyframes dealtCard {
+  from { transform: translateY(-24px) scale(0.85); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+.playing-card.deal-in { animation: dealtCard 0.25s ease-out; }
+
+@keyframes wonTrick {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.trick-slot.winning { animation: wonTrick 0.4s ease-in-out; }
 
 .toast {
   position: fixed;

@@ -10,7 +10,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <section id="lobby" class="screen">
-    <h1>♠ Batak</h1>
+    <h1>♠ Batak <button id="soundToggleBtn" class="icon-btn" title="Sesi aç/kapat">🔊</button></h1>
     <label>Adınız</label>
     <input id="nameInput" type="text" maxlength="20" placeholder="İsminiz" />
 
@@ -34,16 +34,60 @@
           </label>
           <label class="toggle">
             <input id="modeStrictTrump" type="checkbox" checked />
-            <span><strong>Zorunlu Kesme/Basma</strong> — renk yoksa koz zorunlu, üstüne basabiliyorsan basmak zorunlu (kapatırsan serbest oynanır)</span>
+            <span><strong>Zorunlu Kesme/Basma</strong> — renk yoksa koz zorunlu, üstüne basabiliyorsan basmak zorunlu</span>
+          </label>
+          <label class="toggle">
+            <input id="modeBuried" type="checkbox" />
+            <span><strong>Gömmeli</strong> — 4 kart kenara ayrılır, ihaleyi alan bunu görüp elinden 4 kart gömer</span>
+          </label>
+          <label class="toggle">
+            <input id="modeSpectators" type="checkbox" checked />
+            <span><strong>Seyirciye Açık</strong> — masa dolunca gelenler izleyebilir</span>
           </label>
         </div>
+
+        <details class="rules-details">
+          <summary>Puanlama ve bitiş ayarları</summary>
+          <div class="rules-grid">
+            <label>Puanlama
+              <select id="ruleScoringMode">
+                <option value="takenTricks">Alınan el kadar</option>
+                <option value="bidOnly">Sadece ihale kadar</option>
+                <option value="bidPlusOvertricks">İhale + fazla el</option>
+              </select>
+            </label>
+            <label>Batak cezası
+              <select id="rulePenaltyMode">
+                <option value="negativeBid">İhale kadar eksi</option>
+                <option value="negativeTaken">Eksik el kadar</option>
+                <option value="fixedPenalty">Sabit ceza</option>
+              </select>
+            </label>
+            <label>Minimum ihale
+              <input id="ruleMinBid" type="number" min="1" max="13" value="5" />
+            </label>
+            <label>Oyun bitişi
+              <select id="ruleGameEndMode">
+                <option value="targetScore">Hedef skora ulaşınca</option>
+                <option value="fixedHands">Sabit el sayısında</option>
+              </select>
+            </label>
+            <label>Hedef skor
+              <input id="ruleTargetScore" type="number" min="20" max="2000" value="101" />
+            </label>
+            <label>El sayısı (sabit modda)
+              <input id="ruleHandsPerMatch" type="number" min="1" max="100" value="8" />
+            </label>
+          </div>
+        </details>
 
         <button id="createTableBtn">Masa Kur</button>
       </div>
       <div class="card">
         <h2>Masaya Katıl</h2>
-        <input id="joinCodeInput" type="text" maxlength="5" placeholder="Masa Kodu" style="text-transform:uppercase" />
+        <input id="joinCodeInput" type="text" maxlength="6" placeholder="Masa Kodu" style="text-transform:uppercase" />
         <button id="joinTableBtn">Katıl</button>
+        <p class="hint">Masa doluysa otomatik olarak seyirci olarsun.</p>
       </div>
     </div>
 
@@ -58,7 +102,11 @@
     <div id="waitModeBadges" class="badges"></div>
     <p>Bu kodu arkadaşlarınla paylaş, üyelik gerekmiyor.</p>
     <ul id="seatList" class="seat-list"></ul>
-    <button id="startGameBtn" class="hidden">Oyunu Başlat</button>
+    <div class="row">
+      <button id="addBotBtn" class="hidden">🤖 Bot Ekle</button>
+      <button id="startGameBtn" class="hidden">Oyunu Başlat</button>
+    </div>
+    <p id="spectatorNote" class="hint hidden"></p>
   </section>
 
   <section id="game" class="screen hidden">
@@ -83,12 +131,22 @@
     </div>
 
     <div id="open-hand-panel" class="panel hidden"></div>
+    <div id="exchange-panel" class="panel hidden"></div>
     <div id="bid-panel" class="panel hidden"></div>
     <div id="trump-panel" class="panel hidden"></div>
     <div id="hand-complete-panel" class="panel hidden"></div>
     <div id="match-complete-panel" class="panel hidden"></div>
 
     <div id="hand"></div>
+
+    <div id="chat-panel" class="panel">
+      <h3>Sohbet</h3>
+      <div id="chatLog"></div>
+      <div class="row">
+        <input id="chatInput" type="text" maxlength="300" placeholder="Mesaj yaz..." />
+        <button id="chatSendBtn">Gönder</button>
+      </div>
+    </div>
   </section>
 
   <script src="/socket.io/socket.io.js"></script>

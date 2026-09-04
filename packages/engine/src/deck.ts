@@ -30,16 +30,28 @@ export function shuffle<T>(items: T[], seed?: number): T[] {
   return result;
 }
 
-/** Deals a shuffled 52-card deck into 4 hands of 13, starting left of the dealer. */
-export function deal(dealer: PlayerIndex, seed?: number): Record<PlayerIndex, Card[]> {
+export interface DealResult {
+  hands: Record<PlayerIndex, Card[]>;
+  /** Leftover cards not dealt to any player - the "kitty" for Gömmeli Batak. Empty when cardsPerPlayer=13. */
+  kitty: Card[];
+}
+
+/**
+ * Deals a shuffled 52-card deck into 4 hands of `cardsPerPlayer` cards each,
+ * starting left of the dealer. Any remaining cards (52 - 4*cardsPerPlayer)
+ * become the kitty, used by Gömmeli Batak.
+ */
+export function deal(dealer: PlayerIndex, cardsPerPlayer = 13, seed?: number): DealResult {
   const deck = shuffle(createDeck(), seed);
   const hands: Record<PlayerIndex, Card[]> = { 0: [], 1: [], 2: [], 3: [] };
   const startIndex = (dealer + 1) % 4;
-  for (let i = 0; i < deck.length; i++) {
+  const totalDealt = cardsPerPlayer * 4;
+  for (let i = 0; i < totalDealt; i++) {
     const player = ((startIndex + i) % 4) as PlayerIndex;
     hands[player].push(deck[i]);
   }
-  return hands;
+  const kitty = deck.slice(totalDealt);
+  return { hands, kitty };
 }
 
 export function sortHand(hand: Card[]): Card[] {

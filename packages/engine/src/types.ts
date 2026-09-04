@@ -62,6 +62,7 @@ export interface Bid {
 export type GamePhase =
   | 'WAITING_FOR_PLAYERS'
   | 'BIDDING'
+  | 'EXCHANGE'
   | 'CHOOSING_TRUMP'
   | 'PLAYING'
   | 'HAND_COMPLETE'
@@ -174,6 +175,18 @@ export interface MatchConfig {
    * CHOOSING_TRUMP phase is skipped entirely.
    */
   fixedSpadesTrump: boolean;
+
+  /**
+   * "Gömmeli" mode: a kitty is set aside during dealing (so each player
+   * gets fewer than 13 cards - (52-buriedCardCount)/4 each). Once the
+   * auction resolves, the declarer picks up the kitty and must discard
+   * back down to the normal hand size before trump selection/play
+   * (GamePhase 'EXCHANGE'). `buriedCardCount` must be a multiple of 4 so
+   * the remaining cards split evenly; maxBid is auto-derived from it.
+   */
+  buriedCards: boolean;
+  /** Kitty size for Gömmeli mode. Must be a multiple of 4. */
+  buriedCardCount: number;
 }
 
 export const DEFAULT_MATCH_CONFIG: MatchConfig = {
@@ -194,4 +207,6 @@ export const DEFAULT_MATCH_CONFIG: MatchConfig = {
   partnership: false,
   openHand: false,
   fixedSpadesTrump: false,
+  buriedCards: false,
+  buriedCardCount: 4,
 };

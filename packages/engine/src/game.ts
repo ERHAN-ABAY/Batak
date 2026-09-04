@@ -1,5 +1,6 @@
 import { bidStrength, targetForBid, validateBid } from './bidding.js';
 import { deal, sortHand } from './deck.js';
+import { BatakError } from './errors.js';
 import { scoreHand } from './scoring.js';
 import { isLegalPlay, legalPlays, trickWinner } from './trick.js';
 import {
@@ -38,6 +39,8 @@ export interface PublicSettings {
   fixedSpadesTrump: boolean;
   mustTrumpWhenVoid: boolean;
   mustOvertrumpOrBeat: boolean;
+  buriedCards: boolean;
+  buriedCardCount: number;
 }
 
 export interface OpenHandInfo {
@@ -54,7 +57,8 @@ export interface PublicState {
   dealer: PlayerIndex;
   settings: PublicSettings;
   players: Record<PlayerIndex, PublicPlayerState>;
-  hand: Card[]; // requesting player's own hand only
+  hand: Card[]; // requesting player's own hand only (empty for spectators)
+  isSpectator: boolean;
   bids: Bid[];
   highestBid: Bid | null;
   currentBidder: PlayerIndex | null;
@@ -92,6 +96,7 @@ export class Game {
   private tricksWon: Record<PlayerIndex, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
   private lastHandResult: HandResult | null = null;
   private openHandPlayer: PlayerIndex | null = null;
+  private kitty: Card[] = [];
   matchWinner: PlayerIndex | null = null;
 
   constructor(players: Record<PlayerIndex, PlayerInfo>, config: Partial<MatchConfig> = {}) {
@@ -101,14 +106,24 @@ export class Game {
       // Açık only makes sense once a partner exists.
       this.config.openHand = false;
     }
+    if (this.config.buriedCards) {
+      // Keep maxBid consistent with the smaller (kitty-reduced) hand size.
+      this.config.maxBid = (52 - this.config.buriedCardCount) / 4;
+    }
+  }
+
+  private cardsPerPlayer(): number {
+    return this.config.buriedCards ? (52 - this.config.buriedCardCount) / 4 : 13;
   }
 
   startHand(seed?: number): void {
     if (this.phase === 'MATCH_COMPLETE') {
-      throw new Error('match already complete');
+      throw new BatakError('MATCH_ALREADY_COMPLETE', 'match already complete');
     }
     this.handNumber += 1;
-    this.hands = deal(this.dealer, seed);
+    const { hands, kitty } = deal(this.dealer, this.cardsPerPlayer(), seed);
+    this.hands = hands;
+    this.kitty = kitty;
     this.bids = [];
     this.highestBid = null;
     this.passedPlayers = new Set();
@@ -128,12 +143,12 @@ export class Game {
   }
 
   submitBid(player: PlayerIndex, bid: Bid): void {
-    if (this.phase !== 'BIDDING') throw new Error('not in bidding phase');
-    if (this.currentBidder !== player) throw new Error('not this player\'s turn to bid');
-    if (this.passedPlayers.has(player)) throw new Error('player already passed');
+    if (this.phase !== 'BIDDING') throw new BatakError('BIDDING_NOT_ACTIVE', 'not in bidding phase');
+    if (this.currentBidder !== player) throw new BatakError('NOT_PLAYER_TURN', "not this player's turn to bid");
+    if (this.passedPlayers.has(player)) throw new BatakError('ALREADY_PASSED', 'player already passed');
 
     const result = validateBid(bid, this.highestBid, this.config);
-    if (!result.valid) throw new Error(result.reason ?? 'invalid bid');
+    if (!result.valid) throw new BatakError(result.code ?? 'INVALID_BID', result.reason ?? 'invalid bid');
 
     this.bids.push({ ...bid, player });
 
@@ -188,22 +203,57 @@ export class Game {
       this.openHandPlayer = partnerOf(winningBid.player);
     }
 
+    if (this.config.buriedCards && this.kitty.length > 0) {
+      // Declarer picks up the kitty and must discard back down (EXCHANGE phase).
+      this.hands[winningBid.player] = [...this.hands[winningBid.player], ...this.kitty];
+      this.kitty = [];
+      this.phase = 'EXCHANGE';
+      return;
+    }
+
+    this.enterTrumpOrPlay(winningBid.player, type);
+  }
+
+  private enterTrumpOrPlay(declarer: PlayerIndex, type: Contract['type']): void {
     if (type === 'koz' && this.config.fixedSpadesTrump) {
-      this.contract.trumpSuit = 'S';
+      this.contract!.trumpSuit = 'S';
       this.phase = 'PLAYING';
-      this.trickLeader = winningBid.player;
+      this.trickLeader = declarer;
     } else if (type === 'koz') {
       this.phase = 'CHOOSING_TRUMP';
     } else {
       this.phase = 'PLAYING';
-      this.trickLeader = winningBid.player;
+      this.trickLeader = declarer;
     }
   }
 
-  chooseTrump(player: PlayerIndex, suit: Suit): void {
-    if (this.phase !== 'CHOOSING_TRUMP') throw new Error('not choosing trump right now');
+  /** Gömmeli mode: declarer discards `buriedCardCount` cards after picking up the kitty. */
+  exchangeCards(player: PlayerIndex, discards: Card[]): void {
+    if (this.phase !== 'EXCHANGE') throw new BatakError('NOT_EXCHANGE_PHASE', 'not in the exchange phase');
     if (!this.contract || this.contract.declarer !== player) {
-      throw new Error('only the declarer can choose trump');
+      throw new BatakError('NOT_DECLARER', 'only the declarer exchanges cards');
+    }
+    if (discards.length !== this.config.buriedCardCount) {
+      throw new BatakError(
+        'INVALID_EXCHANGE',
+        `must discard exactly ${this.config.buriedCardCount} cards`
+      );
+    }
+    const hand = this.hands[player];
+    const remaining = hand.slice();
+    for (const d of discards) {
+      const idx = remaining.findIndex((c) => cardsEqual(c, d));
+      if (idx === -1) throw new BatakError('CARD_NOT_IN_HAND', 'discarded card not in hand');
+      remaining.splice(idx, 1);
+    }
+    this.hands[player] = remaining;
+    this.enterTrumpOrPlay(player, this.contract.type);
+  }
+
+  chooseTrump(player: PlayerIndex, suit: Suit): void {
+    if (this.phase !== 'CHOOSING_TRUMP') throw new BatakError('NOT_CHOOSING_TRUMP', 'not choosing trump right now');
+    if (!this.contract || this.contract.declarer !== player) {
+      throw new BatakError('NOT_DECLARER', 'only the declarer can choose trump');
     }
     this.contract.trumpSuit = suit;
     this.trickLeader = player;
@@ -212,6 +262,7 @@ export class Game {
 
   whoseTurn(): PlayerIndex | null {
     if (this.phase === 'BIDDING') return this.currentBidder;
+    if (this.phase === 'EXCHANGE' || this.phase === 'CHOOSING_TRUMP') return this.contract?.declarer ?? null;
     if (this.phase === 'PLAYING') {
       return ((this.trickLeader + this.currentTrick.length) % 4) as PlayerIndex;
     }
@@ -232,14 +283,14 @@ export class Game {
   }
 
   playCard(player: PlayerIndex, card: Card): void {
-    if (this.phase !== 'PLAYING') throw new Error('not in playing phase');
-    if (this.whoseTurn() !== player) throw new Error('not this player\'s turn to play');
+    if (this.phase !== 'PLAYING') throw new BatakError('WRONG_PHASE', 'not in playing phase');
+    if (this.whoseTurn() !== player) throw new BatakError('NOT_PLAYER_TURN', "not this player's turn to play");
 
     const hand = this.hands[player];
     const inHand = hand.some((c) => cardsEqual(c, card));
-    if (!inHand) throw new Error('card not in hand');
+    if (!inHand) throw new BatakError('CARD_NOT_IN_HAND', 'card not in hand');
     if (!isLegalPlay(card, hand, this.currentTrick, this.contract!.trumpSuit, this.trickRules())) {
-      throw new Error('illegal play: must follow suit if possible');
+      throw new BatakError('MUST_FOLLOW_SUIT', 'illegal play: must follow suit if possible');
     }
 
     this.hands[player] = hand.filter((c) => !cardsEqual(c, card));
@@ -298,7 +349,8 @@ export class Game {
       : null;
   }
 
-  getPublicState(forPlayer: PlayerIndex): PublicState {
+  /** Pass `forPlayer: null` for a spectator view - no hand is revealed. */
+  getPublicState(forPlayer: PlayerIndex | null): PublicState {
     const players: Record<PlayerIndex, PublicPlayerState> = {} as any;
     for (const p of PLAYER_INDICES) {
       players[p] = {
@@ -323,9 +375,12 @@ export class Game {
         fixedSpadesTrump: this.config.fixedSpadesTrump,
         mustTrumpWhenVoid: this.config.mustTrumpWhenVoid,
         mustOvertrumpOrBeat: this.config.mustOvertrumpOrBeat,
+        buriedCards: this.config.buriedCards,
+        buriedCardCount: this.config.buriedCardCount,
       },
       players,
-      hand: this.getHand(forPlayer),
+      hand: forPlayer !== null ? this.getHand(forPlayer) : [],
+      isSpectator: forPlayer === null,
       bids: this.bids.slice(),
       highestBid: this.highestBid,
       currentBidder: this.currentBidder,

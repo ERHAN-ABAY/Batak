@@ -1,3 +1,4 @@
+import { BatakErrorCode } from './errors.js';
 import { Bid, MatchConfig } from './types.js';
 
 /**
@@ -28,6 +29,7 @@ export function bidStrength(bid: Bid, config: MatchConfig): number {
 
 export interface BidValidationResult {
   valid: boolean;
+  code?: BatakErrorCode;
   reason?: string;
 }
 
@@ -43,16 +45,28 @@ export function validateBid(
   if (config.fixedSpadesTrump && bid.type !== 'koz') {
     return {
       valid: false,
+      code: 'INVALID_BID',
       reason: 'bu masada koz her zaman maça - sadece koz veya pas teklif edilebilir',
     };
   }
 
   if (bid.type === 'koz' || bid.type === 'kozsuz') {
     const v = bid.value;
-    if (v === undefined || !Number.isInteger(v) || v < config.minBid || v > config.maxBid) {
+    if (v === undefined || !Number.isInteger(v)) {
+      return { valid: false, code: 'INVALID_BID', reason: 'value must be an integer' };
+    }
+    if (v < config.minBid) {
       return {
         valid: false,
-        reason: `value must be an integer between ${config.minBid} and ${config.maxBid}`,
+        code: 'BID_TOO_LOW',
+        reason: `value must be at least ${config.minBid}`,
+      };
+    }
+    if (v > config.maxBid) {
+      return {
+        valid: false,
+        code: 'BID_TOO_HIGH',
+        reason: `value must be at most ${config.maxBid}`,
       };
     }
   }
@@ -60,7 +74,7 @@ export function validateBid(
   const strength = bidStrength(bid, config);
   const currentStrength = currentHighest ? bidStrength(currentHighest, config) : -1;
   if (strength <= currentStrength) {
-    return { valid: false, reason: 'bid does not exceed the current highest bid' };
+    return { valid: false, code: 'BID_TOO_LOW', reason: 'bid does not exceed the current highest bid' };
   }
 
   return { valid: true };

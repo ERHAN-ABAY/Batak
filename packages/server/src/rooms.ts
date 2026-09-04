@@ -1,4 +1,4 @@
-import { Table, TableModes } from './table.js';
+import { Table, TableModes, TableRules } from './table.js';
 
 const tables = new Map<string, Table>();
 
@@ -7,14 +7,18 @@ const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I ambiguity
 function generateTableId(): string {
   let code: string;
   do {
-    code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+    code = Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   } while (tables.has(code));
   return code;
 }
 
-export function createTable(name: string, modes: Partial<TableModes> = {}): Table {
+export function createTable(
+  name: string,
+  modes: Partial<TableModes> = {},
+  rules: Partial<TableRules> = {}
+): Table {
   const id = generateTableId();
-  const table = new Table(id, name || `Masa ${id}`, modes);
+  const table = new Table(id, name || `Masa ${id}`, modes, rules);
   tables.set(id, table);
   return table;
 }

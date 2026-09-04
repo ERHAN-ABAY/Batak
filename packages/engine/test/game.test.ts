@@ -228,6 +228,123 @@ describe('Game - partnership (eşli) + open hand (açık)', () => {
   });
 });
 
+describe('Game - buriedCards (Gömmeli Batak)', () => {
+  it('deals a smaller hand and auto-derives maxBid from the kitty size', () => {
+    const game = new Game(makePlayers(), { buriedCards: true, buriedCardCount: 4 });
+    expect(game.config.maxBid).toBe(12); // (52-4)/4
+    game.startHand(7);
+    for (const p of PLAYER_INDICES) {
+      expect(game.getHand(p).length).toBe(12);
+    }
+  });
+
+  it('enters EXCHANGE after the auction, giving the declarer the kitty', () => {
+    const game = new Game(makePlayers(), { handsPerMatch: 1, buriedCards: true, buriedCardCount: 4 });
+    game.startHand(7);
+    const declarer = game.whoseTurn() as PlayerIndex;
+    game.submitBid(declarer, { player: declarer, type: 'koz', value: 5 });
+    let next = ((declarer + 1) % 4) as PlayerIndex;
+    while (game.phase === 'BIDDING') {
+      game.submitBid(next, { player: next, type: 'pas' });
+      next = ((next + 1) % 4) as PlayerIndex;
+    }
+    expect(game.phase).toBe('EXCHANGE');
+    expect(game.whoseTurn()).toBe(declarer);
+    expect(game.getHand(declarer).length).toBe(16); // 12 + 4 kitty cards
+  });
+
+  it('rejects an exchange with the wrong discard count, accepts a correct one and proceeds to trump selection', () => {
+    const game = new Game(makePlayers(), { handsPerMatch: 1, buriedCards: true, buriedCardCount: 4 });
+    game.startHand(7);
+    const declarer = game.whoseTurn() as PlayerIndex;
+    game.submitBid(declarer, { player: declarer, type: 'koz', value: 5 });
+    let next = ((declarer + 1) % 4) as PlayerIndex;
+    while (game.phase === 'BIDDING') {
+      game.submitBid(next, { player: next, type: 'pas' });
+      next = ((next + 1) % 4) as PlayerIndex;
+    }
+
+    const hand16 = game.getHand(declarer);
+    expect(() => game.exchangeCards(declarer, hand16.slice(0, 3))).toThrow();
+
+    game.exchangeCards(declarer, hand16.slice(0, 4));
+    expect(game.phase).toBe('CHOOSING_TRUMP');
+    expect(game.getHand(declarer).length).toBe(12);
+
+    game.chooseTrump(declarer, 'H');
+    expect(game.phase).toBe('PLAYING');
+    autoPlayHand(game);
+    const total = PLAYER_INDICES.reduce((sum, p) => sum + game.getPublicState(p).tricksWon[p], 0);
+    expect(total).toBe(12); // full-hand size for this table is 12, not 13
+  });
+
+  it('only the declarer may exchange', () => {
+    const game = new Game(makePlayers(), { handsPerMatch: 1, buriedCards: true, buriedCardCount: 4 });
+    game.startHand(7);
+    const declarer = game.whoseTurn() as PlayerIndex;
+    game.submitBid(declarer, { player: declarer, type: 'koz', value: 5 });
+    let next = ((declarer + 1) % 4) as PlayerIndex;
+    while (game.phase === 'BIDDING') {
+      game.submitBid(next, { player: next, type: 'pas' });
+      next = ((next + 1) % 4) as PlayerIndex;
+    }
+    const notDeclarer = ((declarer + 1) % 4) as PlayerIndex;
+    expect(() => game.exchangeCards(notDeclarer, game.getHand(notDeclarer).slice(0, 4))).toThrow();
+  });
+});
+
+describe('Game - illegal actions carry typed error codes', () => {
+  it('BIDDING_NOT_ACTIVE when bidding after the auction has resolved', () => {
+    const game = new Game(makePlayers(), { handsPerMatch: 1 });
+    game.startHand(7);
+    game.submitBid(1, { player: 1, type: 'gizli' });
+    game.submitBid(2, { player: 2, type: 'pas' });
+    game.submitBid(3, { player: 3, type: 'pas' });
+    game.submitBid(0, { player: 0, type: 'pas' });
+    expect(game.phase).toBe('PLAYING'); // gizli, no trump selection needed
+    try {
+      game.submitBid(2, { player: 2, type: 'pas' });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as any).code).toBe('BIDDING_NOT_ACTIVE');
+    }
+  });
+
+  it('NOT_PLAYER_TURN when bidding out of turn', () => {
+    const game = new Game(makePlayers(), { handsPerMatch: 1 });
+    game.startHand(7);
+    try {
+      game.submitBid(2, { player: 2, type: 'koz', value: 5 });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as any).code).toBe('NOT_PLAYER_TURN');
+    }
+  });
+
+  it('CARD_NOT_IN_HAND when playing before the auction resolves', () => {
+    const game = new Game(makePlayers(), { handsPerMatch: 1 });
+    game.startHand(7);
+    try {
+      game.playCard(1, game.getHand(1)[0]);
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as any).code).toBe('WRONG_PHASE');
+    }
+  });
+
+  it('BID_TOO_LOW when a bid does not beat the current highest', () => {
+    const game = new Game(makePlayers(), { handsPerMatch: 1 });
+    game.startHand(7);
+    game.submitBid(1, { player: 1, type: 'koz', value: 8 });
+    try {
+      game.submitBid(2, { player: 2, type: 'koz', value: 8 });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as any).code).toBe('BID_TOO_LOW');
+    }
+  });
+});
+
 describe('Game - illegal actions are rejected', () => {
   it('rejects a bid from a player who is not on turn', () => {
     const game = new Game(makePlayers(), { handsPerMatch: 1 });
