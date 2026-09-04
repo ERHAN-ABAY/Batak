@@ -1,0 +1,8 @@
+services:
+  batak-server:
+    build: .
+    ports:
+      - "3737:3000"
+    environment:
+      - PORT=3000
+    restart: unless-stopped

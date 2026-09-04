@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Batak</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="toast" class="toast hidden"></div>
+
+  <section id="lobby" class="screen">
+    <h1>♠ Batak</h1>
+    <label>Adınız</label>
+    <input id="nameInput" type="text" maxlength="20" placeholder="İsminiz" />
+
+    <div class="lobby-actions">
+      <div class="card">
+        <h2>Yeni Masa Kur</h2>
+        <input id="tableNameInput" type="text" maxlength="24" placeholder="Masa adı (opsiyonel)" />
+
+        <div class="mode-toggles">
+          <label class="toggle">
+            <input id="modePartnership" type="checkbox" />
+            <span><strong>Eşli</strong> — 2v2 takım (0-2 ve 1-3 koltukları)</span>
+          </label>
+          <label class="toggle sub">
+            <input id="modeOpenHand" type="checkbox" disabled />
+            <span><strong>Açık</strong> — ihale biten anda ortağın eli herkese açılır</span>
+          </label>
+          <label class="toggle">
+            <input id="modeMaca" type="checkbox" />
+            <span><strong>Maça</strong> — koz her zaman ♠, kozsuz/gizli/elsiz kapalı</span>
+          </label>
+        </div>
+
+        <button id="createTableBtn">Masa Kur</button>
+      </div>
+      <div class="card">
+        <h2>Masaya Katıl</h2>
+        <input id="joinCodeInput" type="text" maxlength="5" placeholder="Masa Kodu" style="text-transform:uppercase" />
+        <button id="joinTableBtn">Katıl</button>
+      </div>
+    </div>
+
+    <div class="card wide">
+      <h2>Açık Masalar <button id="refreshLobbyBtn">↻</button></h2>
+      <ul id="openTables"></ul>
+    </div>
+  </section>
+
+  <section id="waiting" class="screen hidden">
+    <h1>Masa: <span id="waitTableId"></span></h1>
+    <div id="waitModeBadges" class="badges"></div>
+    <p>Bu kodu arkadaşlarınla paylaş, üyelik gerekmiyor.</p>
+    <ul id="seatList" class="seat-list"></ul>
+    <button id="startGameBtn" class="hidden">Oyunu Başlat</button>
+  </section>
+
+  <section id="game" class="screen hidden">
+    <header id="scoreboard-wrap">
+      <div id="modeBadges" class="badges"></div>
+      <div id="scoreboard"></div>
+    </header>
+
+    <div id="table-felt">
+      <div id="seat-top" class="seat-pos"></div>
+      <div id="seat-left" class="seat-pos"></div>
+      <div id="seat-right" class="seat-pos"></div>
+      <div id="seat-bottom" class="seat-pos"></div>
+      <div id="trick-center">
+        <div class="trick-slot" data-pos="top"></div>
+        <div class="trick-slot" data-pos="left"></div>
+        <div class="trick-slot" data-pos="right"></div>
+        <div class="trick-slot" data-pos="bottom"></div>
+        <div id="status-line"></div>
+      </div>
+    </div>
+
+    <div id="open-hand-panel" class="panel hidden"></div>
+    <div id="bid-panel" class="panel hidden"></div>
+    <div id="trump-panel" class="panel hidden"></div>
+    <div id="hand-complete-panel" class="panel hidden"></div>
+    <div id="match-complete-panel" class="panel hidden"></div>
+
+    <div id="hand"></div>
+  </section>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

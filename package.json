@@ -1,0 +1,17 @@
+{
+  "name": "batak-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/engine",
+    "packages/server"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/engine && npm run build -w packages/server",
+    "test": "npm run test -w packages/engine",
+    "dev:server": "npm run dev -w packages/server"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

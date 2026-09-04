@@ -1,0 +1,62 @@
+import { Card, PlayerIndex, Suit, TrickCard } from './types.js';
+
+/** The card currently winning a trick (complete or partial - trick must be non-empty). */
+function currentBestTrickCard(trick: TrickCard[], trumpSuit: Suit | null): TrickCard {
+  const ledSuit = trick[0].card.suit;
+  const trumpsPlayed = trumpSuit ? trick.filter((tc) => tc.card.suit === trumpSuit) : [];
+  const pool = trumpsPlayed.length > 0 ? trumpsPlayed : trick.filter((tc) => tc.card.suit === ledSuit);
+  return pool.reduce((best, tc) => (tc.card.rank > best.card.rank ? tc : best), pool[0]);
+}
+
+/**
+ * Legal cards for whoever is now to act, given their hand, the cards
+ * already played in the current trick, and the trump suit.
+ *
+ * Rules enforced:
+ *  1. Leading a trick is unrestricted - any card may be led.
+ *  2. Otherwise you must follow the led suit if you hold any card of it.
+ *  3. If you cannot follow suit but hold a trump card, you must play trump
+ *     ("zorunlu kesme") - you may not discard a card of a third suit while
+ *     still holding trump.
+ *  4. Within whichever category (2) or (3) applies, if any of your cards in
+ *     that category would beat the current best card of the trick, you are
+ *     required to play one of those beating cards ("üstüne basma
+ *     zorunluluğu" - e.g. must overtrump a trump already played if you
+ *     can). Only when none of your cards in that category can beat the
+ *     current best are you free to play any card from it (typically your
+ *     smallest - "büyük kart yoksa küçük atılabilir").
+ *  5. If neither (2) nor (3) applies (void in the led suit, no trump suit
+ *     in play, or no trump cards left), any card may be discarded freely.
+ */
+export function legalPlays(hand: Card[], trick: TrickCard[], trumpSuit: Suit | null): Card[] {
+  if (trick.length === 0) return hand.slice();
+
+  const ledSuit = trick[0].card.suit;
+  const cardsOfLedSuit = hand.filter((c) => c.suit === ledSuit);
+  const trumpCards = trumpSuit ? hand.filter((c) => c.suit === trumpSuit) : [];
+
+  const eligible = cardsOfLedSuit.length > 0 ? cardsOfLedSuit : trumpCards.length > 0 ? trumpCards : hand;
+
+  const currentBest = currentBestTrickCard(trick, trumpSuit).card;
+  const beating = eligible.filter((c) => c.suit === currentBest.suit && c.rank > currentBest.rank);
+
+  return beating.length > 0 ? beating : eligible.slice();
+}
+
+export function isLegalPlay(
+  card: Card,
+  hand: Card[],
+  trick: TrickCard[],
+  trumpSuit: Suit | null
+): boolean {
+  const legal = legalPlays(hand, trick, trumpSuit);
+  return legal.some((c) => c.suit === card.suit && c.rank === card.rank);
+}
+
+/** Determines which player won a completed (4-card) trick. */
+export function trickWinner(trick: TrickCard[], trumpSuit: Suit | null): PlayerIndex {
+  if (trick.length === 0) {
+    throw new Error('cannot determine winner of an empty trick');
+  }
+  return currentBestTrickCard(trick, trumpSuit).player;
+}
