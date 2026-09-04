@@ -32,6 +32,10 @@
             <input id="modeMaca" type="checkbox" />
             <span><strong>Maça</strong> — koz her zaman ♠, kozsuz/gizli/elsiz kapalı</span>
           </label>
+          <label class="toggle">
+            <input id="modeStrictTrump" type="checkbox" checked />
+            <span><strong>Zorunlu Kesme/Basma</strong> — renk yoksa koz zorunlu, üstüne basabiliyorsan basmak zorunlu (kapatırsan serbest oynanır)</span>
+          </label>
         </div>
 
         <button id="createTableBtn">Masa Kur</button>
@@ -74,6 +78,7 @@
         <div class="trick-slot" data-pos="right"></div>
         <div class="trick-slot" data-pos="bottom"></div>
         <div id="status-line"></div>
+        <div id="turn-timer" class="hidden"></div>
       </div>
     </div>
 

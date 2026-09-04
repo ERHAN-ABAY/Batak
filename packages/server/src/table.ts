@@ -11,6 +11,8 @@ export interface TableModes {
   partnership: boolean;
   openHand: boolean;
   fixedSpadesTrump: boolean;
+  /** "Zorunlu kesme / üstüne basma" - on by default, can be relaxed per table. */
+  strictTrumpRules: boolean;
 }
 
 const SEAT_INDICES: PlayerIndex[] = [0, 1, 2, 3];
@@ -31,6 +33,7 @@ export class Table {
       partnership: !!modes.partnership,
       openHand: !!modes.partnership && !!modes.openHand,
       fixedSpadesTrump: !!modes.fixedSpadesTrump,
+      strictTrumpRules: modes.strictTrumpRules ?? true,
     };
   }
 
@@ -85,6 +88,8 @@ export class Table {
       partnership: this.modes.partnership,
       openHand: this.modes.openHand,
       fixedSpadesTrump: this.modes.fixedSpadesTrump,
+      mustTrumpWhenVoid: this.modes.strictTrumpRules,
+      mustOvertrumpOrBeat: this.modes.strictTrumpRules,
     };
     this.game = new Game(players, config);
     this.game.startHand();

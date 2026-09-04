@@ -78,6 +78,22 @@ describe('legalPlays - void in led suit', () => {
   });
 });
 
+describe('legalPlays - configurable rules', () => {
+  it('mustTrumpWhenVoid=false allows sluffing a third suit even while holding trump', () => {
+    const hand = [c(5, 'D'), c(3, 'S')];
+    const trick = [{ player: 0 as const, card: c(9, 'H') }];
+    const relaxed = legalPlays(hand, trick, 'S', { mustTrumpWhenVoid: false, mustOvertrumpOrBeat: true });
+    expect(relaxed).toEqual(hand);
+  });
+
+  it('mustOvertrumpOrBeat=false allows playing a lower card even when a beating one is available', () => {
+    const hand = [c(5, 'S'), c(10, 'H'), c(2, 'H')];
+    const trick = [{ player: 0 as const, card: c(9, 'H') }];
+    const relaxed = legalPlays(hand, trick, null, { mustTrumpWhenVoid: true, mustOvertrumpOrBeat: false });
+    expect(relaxed).toEqual([c(10, 'H'), c(2, 'H')]);
+  });
+});
+
 describe('isLegalPlay', () => {
   it('rejects a play that violates the must-beat rule', () => {
     const hand = [c(5, 'S'), c(2, 'H'), c(10, 'H')];

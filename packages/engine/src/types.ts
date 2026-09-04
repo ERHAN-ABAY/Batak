@@ -88,21 +88,72 @@ export interface HandResult {
   scoreDelta: Record<PlayerIndex, number>;
 }
 
+/** How a successful (made) 'koz'/'kozsuz'/'gizli' contract is scored. */
+export type ScoringMode = 'takenTricks' | 'bidOnly' | 'bidPlusOvertricks';
+/** How a failed (batak) 'koz'/'kozsuz'/'gizli' contract is penalized. */
+export type PenaltyMode = 'negativeBid' | 'negativeTaken' | 'fixedPenalty';
+/** How a full match ends. */
+export type GameEndMode = 'targetScore' | 'fixedHands';
+/** What happens when all 4 players pass during the auction. */
+export type AllPassAction = 'redeal' | 'dealerTakesMinimum';
+
 export interface MatchConfig {
   /** Minimum trick count for a 'koz' / 'kozsuz' bid. */
   minBid: number;
-  /** Point multiplier per trick for a 'koz' contract. */
-  kozMultiplier: number;
-  /** Point multiplier per trick for a 'kozsuz' contract. */
-  kozsuzMultiplier: number;
-  /** Point multiplier per trick for a successful/failed 'gizli' contract. */
-  gizliMultiplier: number;
-  /** Flat score awarded/deducted for a successful/failed 'elsiz' contract. */
+  /** Maximum trick count for a 'koz' / 'kozsuz' bid (always 13 = the whole hand at most). */
+  maxBid: number;
+
+  /**
+   * Declarer scoring on a MADE contract:
+   *  - 'takenTricks'      : score += tricks actually taken (default; e.g. bid 7, took 9 -> +9)
+   *  - 'bidOnly'           : score += the bid, overtricks ignored (bid 7, took 9 -> +7)
+   *  - 'bidPlusOvertricks' : score += bid + overtrickPoints per trick beyond the bid
+   */
+  scoringMode: ScoringMode;
+  /** Per-overtrick point value, only used when scoringMode = 'bidPlusOvertricks'. */
+  overtrickPoints: number;
+  /**
+   * Declarer penalty on a FAILED (batak) contract:
+   *  - 'negativeBid'   : score -= the bid (default; e.g. bid 8, took 5 -> -8)
+   *  - 'negativeTaken' : score -= the shortfall (bid - taken)
+   *  - 'fixedPenalty'  : score -= fixedPenaltyPoints, regardless of the bid
+   */
+  penaltyMode: PenaltyMode;
+  /** Flat penalty, only used when penaltyMode = 'fixedPenalty'. */
+  fixedPenaltyPoints: number;
+  /**
+   * Flat score awarded/deducted for a successful/failed 'elsiz' (0-trick)
+   * contract - a plain taken-tricks formula is meaningless when the target
+   * is zero, so elsiz always uses this dedicated flat value regardless of
+   * scoringMode/penaltyMode. Not defined by the source spec; kept tunable.
+   */
   elsizPoints: number;
-  /** Flat points earned per trick won by a non-declarer player. */
+  /** Flat points earned per trick won by a non-declarer (or non-declaring-team) player. */
   pointsPerTrick: number;
-  /** How many hands make up a full match. */
+
+  /** How a match ends: reach `targetScore` (default) or play a fixed `handsPerMatch`. */
+  gameEndMode: GameEndMode;
+  /** Cumulative score that ends the match when gameEndMode = 'targetScore'. */
+  targetScore: number;
+  /** Hands per match when gameEndMode = 'fixedHands'. */
   handsPerMatch: number;
+
+  /** What happens when all 4 players pass: redeal, or the dealer takes minBid automatically. */
+  allPassAction: AllPassAction;
+
+  /**
+   * Must a player who is void in the led suit play a trump if they hold
+   * one (cannot sluff a third suit while holding trump)? Default true.
+   */
+  mustTrumpWhenVoid: boolean;
+  /**
+   * Within whichever category you must play from (led suit, or trump when
+   * void), must you play a card that beats the current best card of the
+   * trick if you have one ("üstüne basma zorunluluğu")? Default true -
+   * only when none of your eligible cards can beat the current best are
+   * you free to play any of them (typically your smallest).
+   */
+  mustOvertrumpOrBeat: boolean;
 
   /**
    * "Eşli" mode: seats 0&2 are Team A, seats 1&3 are Team B. Contract
@@ -127,12 +178,19 @@ export interface MatchConfig {
 
 export const DEFAULT_MATCH_CONFIG: MatchConfig = {
   minBid: 5,
-  kozMultiplier: 10,
-  kozsuzMultiplier: 20,
-  gizliMultiplier: 40,
-  elsizPoints: 100,
-  pointsPerTrick: 10,
+  maxBid: 13,
+  scoringMode: 'takenTricks',
+  overtrickPoints: 1,
+  penaltyMode: 'negativeBid',
+  fixedPenaltyPoints: 10,
+  elsizPoints: 20,
+  pointsPerTrick: 1,
+  gameEndMode: 'targetScore',
+  targetScore: 101,
   handsPerMatch: 8,
+  allPassAction: 'dealerTakesMinimum',
+  mustTrumpWhenVoid: true,
+  mustOvertrumpOrBeat: true,
   partnership: false,
   openHand: false,
   fixedSpadesTrump: false,

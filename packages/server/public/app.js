@@ -63,13 +63,18 @@ function cardBackEl() {
   return el('div', 'card-back');
 }
 
-// ---------- Legal-play check (mirrors engine's follow-suit + must-beat rule) ----------
-function legalPlays(hand, trick, trumpSuit) {
+// ---------- Legal-play check (mirrors engine's configurable follow-suit / must-beat rules) ----------
+function legalPlays(hand, trick, trumpSuit, rules) {
+  const mustTrumpWhenVoid = rules ? rules.mustTrumpWhenVoid : true;
+  const mustOvertrumpOrBeat = rules ? rules.mustOvertrumpOrBeat : true;
   if (trick.length === 0) return hand;
   const ledSuit = trick[0].card.suit;
   const cardsOfLedSuit = hand.filter((c) => c.suit === ledSuit);
   const trumpCards = trumpSuit ? hand.filter((c) => c.suit === trumpSuit) : [];
-  const eligible = cardsOfLedSuit.length > 0 ? cardsOfLedSuit : trumpCards.length > 0 ? trumpCards : hand;
+  const eligible =
+    cardsOfLedSuit.length > 0 ? cardsOfLedSuit : mustTrumpWhenVoid && trumpCards.length > 0 ? trumpCards : hand;
+
+  if (!mustOvertrumpOrBeat) return eligible;
 
   const trumpsPlayed = trumpSuit ? trick.filter((tc) => tc.card.suit === trumpSuit) : [];
   const pool = trumpsPlayed.length > 0 ? trumpsPlayed : trick.filter((tc) => tc.card.suit === ledSuit);
@@ -156,6 +161,7 @@ $('#createTableBtn').addEventListener('click', () => {
       partnership: partnershipCk.checked,
       openHand: openHandCk.checked,
       fixedSpadesTrump: $('#modeMaca').checked,
+      strictTrumpRules: $('#modeStrictTrump').checked,
     },
     (res) => {
       if (res.error) return showToast(res.error);
@@ -217,7 +223,11 @@ function renderScoreboard(state) {
 
   const header = $('#scoreboard');
   header.innerHTML = '';
-  header.appendChild(el('div', 'score-chip', `El ${state.game.handNumber}/${state.game.handsPerMatch}`));
+  const progressLabel =
+    state.game.gameEndMode === 'targetScore'
+      ? `El ${state.game.handNumber} · Hedef ${state.game.targetScore}`
+      : `El ${state.game.handNumber}/${state.game.handsPerMatch}`;
+  header.appendChild(el('div', 'score-chip', progressLabel));
   for (let i = 0; i < 4; i++) {
     const p = state.game.players[i];
     let cls = 'score-chip' + (i === state.mySeat ? ' me' : '') + (state.game.turn === i ? ' turn' : '');
@@ -403,7 +413,7 @@ function renderHand(state) {
   container.innerHTML = '';
   const isPlayingTurn = state.game.phase === 'PLAYING' && state.game.turn === state.mySeat;
   const legal = isPlayingTurn
-    ? legalPlays(state.game.hand, state.game.currentTrick, state.game.contract?.trumpSuit ?? null)
+    ? legalPlays(state.game.hand, state.game.currentTrick, state.game.contract?.trumpSuit ?? null, state.game.settings)
     : [];
   for (const card of state.game.hand) {
     const isLegal = legal.some((c) => c.suit === card.suit && c.rank === card.rank);
@@ -457,3 +467,20 @@ socket.on('connect', () => {
     refreshLobby();
   }
 });
+
+// ---------- Turn countdown ----------
+setInterval(() => {
+  const timerEl = $('#turn-timer');
+  if (!timerEl) return;
+  const st = latestState;
+  const deadline = st && st.turnDeadline;
+  const active = st && st.game && (st.game.phase === 'BIDDING' || st.game.phase === 'PLAYING');
+  if (!deadline || !active) {
+    timerEl.classList.add('hidden');
+    return;
+  }
+  const secondsLeft = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+  timerEl.textContent = `⏱ ${secondsLeft}s`;
+  timerEl.classList.remove('hidden');
+  timerEl.classList.toggle('low', secondsLeft <= 5);
+}, 250);

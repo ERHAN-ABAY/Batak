@@ -26,7 +26,7 @@ describe('Game - full auction + play (koz contract)', () => {
   let game: Game;
 
   beforeEach(() => {
-    game = new Game(makePlayers(), { handsPerMatch: 1 });
+    game = new Game(makePlayers(), { gameEndMode: 'fixedHands', handsPerMatch: 1 });
     game.startHand(123);
   });
 
@@ -57,6 +57,39 @@ describe('Game - full auction + play (koz contract)', () => {
     const scoreSum = PLAYER_INDICES.reduce((s, p) => s + game.scores[p], 0);
     // sanity: scores were actually mutated from zero
     expect(scoreSum).not.toBe(0);
+  });
+});
+
+describe('Game - gameEndMode=targetScore (default)', () => {
+  it('ends the match once any player reaches targetScore, picking the highest score as winner', () => {
+    const game = new Game(makePlayers(), { targetScore: 5 });
+    game.startHand(123);
+    game.submitBid(1, { player: 1, type: 'koz', value: 5 });
+    game.submitBid(2, { player: 2, type: 'pas' });
+    game.submitBid(3, { player: 3, type: 'pas' });
+    game.submitBid(0, { player: 0, type: 'pas' });
+    game.chooseTrump(1, 'H');
+    autoPlayHand(game);
+
+    // a single hand's winner takes at least 5 tricks (takenTricks scoring),
+    // more than enough to cross a targetScore of 5.
+    expect(game.phase).toBe('MATCH_COMPLETE');
+    expect(game.scores[game.matchWinner!]).toBeGreaterThanOrEqual(5);
+    for (const p of PLAYER_INDICES) {
+      expect(game.scores[game.matchWinner!]).toBeGreaterThanOrEqual(game.scores[p]);
+    }
+  });
+
+  it('keeps playing (HAND_COMPLETE, not MATCH_COMPLETE) while everyone is still under target', () => {
+    const game = new Game(makePlayers(), { targetScore: 1000 });
+    game.startHand(123);
+    game.submitBid(1, { player: 1, type: 'koz', value: 5 });
+    game.submitBid(2, { player: 2, type: 'pas' });
+    game.submitBid(3, { player: 3, type: 'pas' });
+    game.submitBid(0, { player: 0, type: 'pas' });
+    game.chooseTrump(1, 'H');
+    autoPlayHand(game);
+    expect(game.phase).toBe('HAND_COMPLETE');
   });
 });
 
@@ -104,9 +137,9 @@ describe('Game - kozsuz/gizli/elsiz skip trump selection', () => {
   });
 });
 
-describe('Game - all players pass triggers a redeal', () => {
-  it('rotates the dealer and restarts bidding without consuming a hand slot', () => {
-    const game = new Game(makePlayers(), { handsPerMatch: 8 });
+describe('Game - all players pass', () => {
+  it('with allPassAction=redeal: rotates the dealer and restarts bidding without consuming a hand slot', () => {
+    const game = new Game(makePlayers(), { allPassAction: 'redeal' });
     game.startHand(7);
     expect(game.handNumber).toBe(1);
 
@@ -118,6 +151,21 @@ describe('Game - all players pass triggers a redeal', () => {
     expect(game.phase).toBe('BIDDING');
     expect(game.handNumber).toBe(1);
     expect(game.dealer).toBe(1);
+  });
+
+  it('with allPassAction=dealerTakesMinimum (default): dealer auto-declares at minBid', () => {
+    const game = new Game(makePlayers());
+    game.startHand(7);
+    const dealer = game.dealer;
+
+    game.submitBid(1, { player: 1, type: 'pas' });
+    game.submitBid(2, { player: 2, type: 'pas' });
+    game.submitBid(3, { player: 3, type: 'pas' });
+    game.submitBid(0, { player: 0, type: 'pas' });
+
+    expect(game.phase).toBe('CHOOSING_TRUMP');
+    expect(game.getPublicState(0).contract?.declarer).toBe(dealer);
+    expect(game.getPublicState(0).contract?.target).toBe(game.config.minBid);
   });
 });
 

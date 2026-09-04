@@ -59,14 +59,14 @@ describe('validateBid', () => {
 });
 
 describe('targetForBid', () => {
-  it('gizli targets 13 tricks', () => {
-    expect(targetForBid({ player: 0, type: 'gizli' })).toBe(13);
+  it('gizli targets maxBid tricks (the whole hand)', () => {
+    expect(targetForBid({ player: 0, type: 'gizli' }, config)).toBe(config.maxBid);
   });
   it('elsiz targets 0 tricks', () => {
-    expect(targetForBid({ player: 0, type: 'elsiz' })).toBe(0);
+    expect(targetForBid({ player: 0, type: 'elsiz' }, config)).toBe(0);
   });
   it('koz/kozsuz target their declared value', () => {
-    expect(targetForBid({ player: 0, type: 'koz', value: 9 })).toBe(9);
-    expect(targetForBid({ player: 0, type: 'kozsuz', value: 6 })).toBe(6);
+    expect(targetForBid({ player: 0, type: 'koz', value: 9 }, config)).toBe(9);
+    expect(targetForBid({ player: 0, type: 'kozsuz', value: 6 }, config)).toBe(6);
   });
 });

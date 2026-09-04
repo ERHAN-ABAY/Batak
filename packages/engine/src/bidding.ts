@@ -49,10 +49,10 @@ export function validateBid(
 
   if (bid.type === 'koz' || bid.type === 'kozsuz') {
     const v = bid.value;
-    if (v === undefined || !Number.isInteger(v) || v < config.minBid || v > 13) {
+    if (v === undefined || !Number.isInteger(v) || v < config.minBid || v > config.maxBid) {
       return {
         valid: false,
-        reason: `value must be an integer between ${config.minBid} and 13`,
+        reason: `value must be an integer between ${config.minBid} and ${config.maxBid}`,
       };
     }
   }
@@ -67,10 +67,10 @@ export function validateBid(
 }
 
 /** Resolves the target trick count implied by a winning (non-pass) bid. */
-export function targetForBid(bid: Bid): number {
+export function targetForBid(bid: Bid, config: MatchConfig): number {
   switch (bid.type) {
     case 'gizli':
-      return 13;
+      return config.maxBid;
     case 'elsiz':
       return 0;
     case 'koz':

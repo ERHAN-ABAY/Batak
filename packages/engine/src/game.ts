@@ -1,12 +1,13 @@
 import { bidStrength, targetForBid, validateBid } from './bidding.js';
 import { deal, sortHand } from './deck.js';
 import { scoreHand } from './scoring.js';
-import { isLegalPlay, trickWinner } from './trick.js';
+import { isLegalPlay, legalPlays, trickWinner } from './trick.js';
 import {
   Bid,
   Card,
   Contract,
   DEFAULT_MATCH_CONFIG,
+  GameEndMode,
   GamePhase,
   HandResult,
   MatchConfig,
@@ -35,6 +36,8 @@ export interface PublicSettings {
   partnership: boolean;
   openHand: boolean;
   fixedSpadesTrump: boolean;
+  mustTrumpWhenVoid: boolean;
+  mustOvertrumpOrBeat: boolean;
 }
 
 export interface OpenHandInfo {
@@ -46,6 +49,8 @@ export interface PublicState {
   phase: GamePhase;
   handNumber: number;
   handsPerMatch: number;
+  gameEndMode: GameEndMode;
+  targetScore: number;
   dealer: PlayerIndex;
   settings: PublicSettings;
   players: Record<PlayerIndex, PublicPlayerState>;
@@ -139,10 +144,16 @@ export class Game {
     }
 
     if (this.passedPlayers.size === 4) {
-      // everyone passed - redeal, dealer rotates
-      this.dealer = ((this.dealer + 1) % 4) as PlayerIndex;
-      this.handNumber -= 1; // this hand never counted
-      this.startHand();
+      if (this.config.allPassAction === 'dealerTakesMinimum') {
+        const autoBid: Bid = { player: this.dealer, type: 'koz', value: this.config.minBid };
+        this.bids.push(autoBid);
+        this.resolveAuction(autoBid);
+      } else {
+        // redeal - dealer rotates, this hand never counted
+        this.dealer = ((this.dealer + 1) % 4) as PlayerIndex;
+        this.handNumber -= 1;
+        this.startHand();
+      }
       return;
     }
 
@@ -164,7 +175,7 @@ export class Game {
 
   private resolveAuction(winningBid: Bid): void {
     const type = winningBid.type as 'koz' | 'kozsuz' | 'gizli' | 'elsiz';
-    const target = targetForBid(winningBid);
+    const target = targetForBid(winningBid, this.config);
     this.contract = {
       declarer: winningBid.player,
       type,
@@ -207,6 +218,19 @@ export class Game {
     return null;
   }
 
+  private trickRules() {
+    return {
+      mustTrumpWhenVoid: this.config.mustTrumpWhenVoid,
+      mustOvertrumpOrBeat: this.config.mustOvertrumpOrBeat,
+    };
+  }
+
+  /** Legal cards for `player` to play right now (empty outside the PLAYING phase). */
+  getLegalPlays(player: PlayerIndex): Card[] {
+    if (this.phase !== 'PLAYING' || this.whoseTurn() !== player) return [];
+    return legalPlays(this.hands[player], this.currentTrick, this.contract!.trumpSuit, this.trickRules());
+  }
+
   playCard(player: PlayerIndex, card: Card): void {
     if (this.phase !== 'PLAYING') throw new Error('not in playing phase');
     if (this.whoseTurn() !== player) throw new Error('not this player\'s turn to play');
@@ -214,7 +238,7 @@ export class Game {
     const hand = this.hands[player];
     const inHand = hand.some((c) => cardsEqual(c, card));
     if (!inHand) throw new Error('card not in hand');
-    if (!isLegalPlay(card, hand, this.currentTrick, this.contract!.trumpSuit)) {
+    if (!isLegalPlay(card, hand, this.currentTrick, this.contract!.trumpSuit, this.trickRules())) {
       throw new Error('illegal play: must follow suit if possible');
     }
 
@@ -251,7 +275,12 @@ export class Game {
     this.lastHandResult = result;
     this.dealer = ((this.dealer + 1) % 4) as PlayerIndex;
 
-    if (this.handNumber >= this.config.handsPerMatch) {
+    const matchOver =
+      this.config.gameEndMode === 'targetScore'
+        ? PLAYER_INDICES.some((p) => this.scores[p] >= this.config.targetScore)
+        : this.handNumber >= this.config.handsPerMatch;
+
+    if (matchOver) {
       this.phase = 'MATCH_COMPLETE';
       let best: PlayerIndex = 0;
       for (const p of PLAYER_INDICES) {
@@ -285,11 +314,15 @@ export class Game {
       phase: this.phase,
       handNumber: this.handNumber,
       handsPerMatch: this.config.handsPerMatch,
+      gameEndMode: this.config.gameEndMode,
+      targetScore: this.config.targetScore,
       dealer: this.dealer,
       settings: {
         partnership: this.config.partnership,
         openHand: this.config.openHand,
         fixedSpadesTrump: this.config.fixedSpadesTrump,
+        mustTrumpWhenVoid: this.config.mustTrumpWhenVoid,
+        mustOvertrumpOrBeat: this.config.mustOvertrumpOrBeat,
       },
       players,
       hand: this.getHand(forPlayer),

@@ -202,6 +202,19 @@ button:disabled { background: #444; color: #999; cursor: not-allowed; transform:
   text-overflow: ellipsis;
 }
 
+#turn-timer {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  font-weight: 700;
+  font-size: 12px;
+  background: rgba(0,0,0,0.4);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+#turn-timer.low { background: #b32d2d; }
+
 /* ---------- Panels ---------- */
 .panel {
   background: var(--panel);

@@ -15,6 +15,54 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: '*' } });
 
+// --- Turn timeouts: bidding 20s, playing 30s. Prevents an AFK player from
+// freezing the table forever (see BATAK_OYUN_KURALLARI_VE_TEKNIK_SPEK.md #30).
+const BID_TIMEOUT_MS = 20_000;
+const PLAY_TIMEOUT_MS = 30_000;
+const turnTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const turnDeadlines = new Map<string, number>();
+
+function clearTurnTimer(tableId: string): void {
+  const t = turnTimers.get(tableId);
+  if (t) {
+    clearTimeout(t);
+    turnTimers.delete(tableId);
+  }
+  turnDeadlines.delete(tableId);
+}
+
+function scheduleTurnTimer(table: Table): void {
+  clearTurnTimer(table.id);
+  const game = table.game;
+  if (!game) return;
+  if (game.phase !== 'BIDDING' && game.phase !== 'PLAYING') return;
+
+  const turn = game.whoseTurn();
+  if (turn === null) return;
+  const phase = game.phase;
+  const ms = phase === 'BIDDING' ? BID_TIMEOUT_MS : PLAY_TIMEOUT_MS;
+  turnDeadlines.set(table.id, Date.now() + ms);
+
+  const timer = setTimeout(() => {
+    turnTimers.delete(table.id);
+    const g = table.game;
+    if (!g || g.phase !== phase || g.whoseTurn() !== turn) return; // already acted on
+    try {
+      if (phase === 'BIDDING') {
+        g.submitBid(turn, { player: turn, type: 'pas' });
+      } else {
+        const legal = g.getLegalPlays(turn);
+        const lowest = legal.slice().sort((a, b) => a.rank - b.rank)[0];
+        if (lowest) g.playCard(turn, lowest);
+      }
+    } catch {
+      // best-effort auto-action; if it somehow fails, just leave the table as-is
+    }
+    broadcast(table);
+  }, ms);
+  turnTimers.set(table.id, timer);
+}
+
 function tableView(table: Table, forPlayerId: string) {
   const mySeat = table.findSeatByPlayerId(forPlayerId);
   return {
@@ -25,6 +73,7 @@ function tableView(table: Table, forPlayerId: string) {
     seats: table.seats.map((s) => (s ? { name: s.name, connected: s.connected } : null)),
     mySeat,
     game: mySeat !== null && table.game ? table.game.getPublicState(mySeat) : null,
+    turnDeadline: turnDeadlines.get(table.id) ?? null,
   };
 }
 
@@ -35,6 +84,7 @@ function broadcast(table: Table): void {
     if (!socket) continue;
     socket.emit('table:update', tableView(table, seat.playerId));
   }
+  scheduleTurnTimer(table);
 }
 
 function fail(socket: Socket, message: string): void {
@@ -56,6 +106,7 @@ io.on('connection', (socket: Socket) => {
         partnership?: boolean;
         openHand?: boolean;
         fixedSpadesTrump?: boolean;
+        strictTrumpRules?: boolean;
       },
       ack?: (res: unknown) => void
     ) => {
@@ -64,6 +115,7 @@ io.on('connection', (socket: Socket) => {
           partnership: payload.partnership,
           openHand: payload.openHand,
           fixedSpadesTrump: payload.fixedSpadesTrump,
+          strictTrumpRules: payload.strictTrumpRules,
         });
         table.join(payload.playerId, payload.name, socket.id);
         socket.join(table.id);

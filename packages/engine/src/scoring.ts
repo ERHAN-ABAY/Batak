@@ -14,28 +14,51 @@ export function scoreHand(
     : scoreHandSolo(contract, tricksWon, config);
 }
 
+/**
+ * Score for the declaring side (player or team) against their contract.
+ * 'elsiz' (0-trick) contracts always use the dedicated flat elsizPoints,
+ * since a taken-tricks/bid-based formula is meaningless when the target
+ * is zero. Everything else follows config.scoringMode / config.penaltyMode.
+ */
 function contractPoints(
   type: Contract['type'],
   target: number,
   tricksTakenByContractSide: number,
   config: MatchConfig
 ): number {
-  switch (type) {
-    case 'koz':
-      return (tricksTakenByContractSide >= target ? 1 : -1) * target * config.kozMultiplier;
-    case 'kozsuz':
-      return (tricksTakenByContractSide >= target ? 1 : -1) * target * config.kozsuzMultiplier;
-    case 'gizli':
-      return (tricksTakenByContractSide === 13 ? 1 : -1) * 13 * config.gizliMultiplier;
-    case 'elsiz':
-      return (tricksTakenByContractSide === 0 ? 1 : -1) * config.elsizPoints;
+  if (type === 'elsiz') {
+    return (tricksTakenByContractSide === 0 ? 1 : -1) * config.elsizPoints;
+  }
+
+  const made = tricksTakenByContractSide >= target;
+  if (made) {
+    switch (config.scoringMode) {
+      case 'bidOnly':
+        return target;
+      case 'bidPlusOvertricks':
+        return target + (tricksTakenByContractSide - target) * config.overtrickPoints;
+      case 'takenTricks':
+      default:
+        return tricksTakenByContractSide;
+    }
+  }
+
+  switch (config.penaltyMode) {
+    case 'negativeTaken':
+      return -(target - tricksTakenByContractSide);
+    case 'fixedPenalty':
+      return -config.fixedPenaltyPoints;
+    case 'negativeBid':
+    default:
+      return -target;
   }
 }
 
 /**
  * Solo scoring: the declarer alone is judged against the contract; every
  * other player simply banks `pointsPerTrick` for each trick they personally
- * won. (Deliberately simple, tunable house rule - see MatchConfig.)
+ * won. (The source spec only defines declarer scoring - the non-declarer
+ * per-trick bonus is our own tunable addition.)
  */
 function scoreHandSolo(
   contract: Contract,
