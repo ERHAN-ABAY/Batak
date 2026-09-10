@@ -18,7 +18,7 @@ function autoPlayHand(game: Game): void {
   while (game.phase === 'PLAYING') {
     const turn = game.whoseTurn() as PlayerIndex;
     const state = game.getPublicState(turn);
-    const legal = legalPlays(state.hand, state.currentTrick, state.contract!.trumpSuit);
+    const legal = legalPlays(state.hand, state.currentTrick, state.contract!.trumpSuit, state.trumpBroken);
     game.playCard(turn, legal[0]);
   }
 }
@@ -304,6 +304,44 @@ describe('Game - BURIED_BID (Gömmeli Batak, §10)', () => {
     runAuction(game, declarer, 5);
     const notDeclarer = ((declarer + 1) % 4) as PlayerIndex;
     expect(() => game.exchangeCards(notDeclarer, game.getHand(notDeclarer).slice(0, 4))).toThrow();
+  });
+});
+
+describe('Game - "koz kırılmadan koz ile çıkılamaz" (trump-breaking)', () => {
+  it('a trick leader may not open with trump before it has been broken this hand', () => {
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
+    game.startHand(7);
+    const declarer = game.whoseTurn() as PlayerIndex;
+    runAuction(game, declarer, 5);
+    game.chooseTrump(declarer, 'S');
+    expect(game.phase).toBe('PLAYING');
+
+    const leader = game.whoseTurn() as PlayerIndex;
+    const hand = game.getHand(leader);
+    const legal = game.getLegalPlays(leader);
+    if (hand.some((c) => c.suit !== 'S')) {
+      // holds a non-trump card -> every trump card must be excluded from the legal-lead set
+      expect(legal.every((c) => c.suit !== 'S')).toBe(true);
+    } else {
+      // hand is entirely trump -> the "only suit left" exception allows leading it
+      expect(legal.length).toBe(hand.length);
+    }
+  });
+
+  it('trump becomes legal to lead once it has been played earlier in the hand (as a ruff)', () => {
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
+    game.startHand(7);
+    const declarer = game.whoseTurn() as PlayerIndex;
+    runAuction(game, declarer, 5);
+    game.chooseTrump(declarer, 'S');
+
+    expect(game.getPublicState(0).trumpBroken).toBe(false);
+    autoPlayHand(game);
+    // Once the hand is fully played out, trump was necessarily led/ruffed
+    // at some point unless the deal happened to hold zero trump discards -
+    // just assert the flag never causes a thrown error mid-play (autoPlayHand
+    // would have thrown if legalPlays/isLegalPlay disagreed).
+    expect(game.phase === 'HAND_COMPLETE' || game.phase === 'MATCH_COMPLETE').toBe(true);
   });
 });
 

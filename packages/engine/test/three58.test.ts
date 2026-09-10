@@ -14,7 +14,7 @@ function autoPlayHand(game: ThreeFiveEightGame): void {
   while (game.phase === 'PLAYING') {
     const turn = game.whoseTurn() as ThreeSeat;
     const state = game.getPublicState(turn);
-    const legal = legalPlays(state.hand, state.currentTrick, state.trumpSuit);
+    const legal = legalPlays(state.hand, state.currentTrick, state.trumpSuit, true);
     game.playCard(turn, legal[0]);
   }
 }

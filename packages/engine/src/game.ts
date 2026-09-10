@@ -71,11 +71,15 @@ export interface PublicState {
   highestBid: Bid | null;
   currentBidder: PlayerIndex | null;
   contract: Contract | null;
+  /** "Koz kırılmadan koz ile çıkılamaz" - whether trump may currently be led. */
+  trumpBroken: boolean;
   currentTrick: TrickCard[];
   turn: PlayerIndex | null;
   lastCompletedTrick: TrickCard[] | null;
   tricksWon: Record<PlayerIndex, number>;
   lastHandResult: HandResult | null;
+  /** Every completed hand this match, oldest first - for a running score-by-hand table. */
+  handHistory: HandResult[];
   matchWinner: PlayerIndex | null;
   /**
    * §5's "Açık İhale" reveal: once the declarer picks trump, the hand of
@@ -115,6 +119,8 @@ export class Game {
   private trickLeader: PlayerIndex = 0;
   private currentTrick: TrickCard[] = [];
   private completedTricks: TrickCard[][] = [];
+  /** "Koz kırılmadan koz ile çıkılamaz": becomes true the first time a trump card is played this hand. */
+  private trumpBroken = false;
   private tricksWon: Record<PlayerIndex, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
   private lastHandResult: HandResult | null = null;
   private kitty: Card[] = [];
@@ -147,6 +153,7 @@ export class Game {
     this.tricksWon = { 0: 0, 1: 0, 2: 0, 3: 0 };
     this.lastHandResult = null;
     this.openHandPlayer = null;
+    this.trumpBroken = false;
 
     if (this.config.biddingStyle === 'none') {
       // Koz Maça Mod A (İhalesiz, §8): no auction at all - straight to play.
@@ -335,7 +342,7 @@ export class Game {
   /** Legal cards for `player` to play right now (empty outside the PLAYING phase). */
   getLegalPlays(player: PlayerIndex): Card[] {
     if (this.phase !== 'PLAYING' || this.whoseTurn() !== player) return [];
-    return legalPlays(this.hands[player], this.currentTrick, this.contract!.trumpSuit);
+    return legalPlays(this.hands[player], this.currentTrick, this.contract!.trumpSuit, this.trumpBroken);
   }
 
   playCard(player: PlayerIndex, card: Card): void {
@@ -345,9 +352,11 @@ export class Game {
     const hand = this.hands[player];
     const inHand = hand.some((c) => cardsEqual(c, card));
     if (!inHand) throw new BatakError('CARD_NOT_IN_HAND', 'card not in hand');
-    if (!isLegalPlay(card, hand, this.currentTrick, this.contract!.trumpSuit)) {
+    if (!isLegalPlay(card, hand, this.currentTrick, this.contract!.trumpSuit, this.trumpBroken)) {
       throw new BatakError('MUST_FOLLOW_SUIT', 'illegal play: must follow suit if possible');
     }
+
+    if (this.contract!.trumpSuit && card.suit === this.contract!.trumpSuit) this.trumpBroken = true;
 
     this.hands[player] = hand.filter((c) => !cardsEqual(c, card));
     this.currentTrick.push({ player, card });
@@ -451,11 +460,13 @@ export class Game {
       highestBid: highestBidAsBid,
       currentBidder: this.currentBidder,
       contract: this.contract,
+      trumpBroken: this.trumpBroken,
       currentTrick: this.currentTrick.slice(),
       turn: this.whoseTurn(),
       lastCompletedTrick: this.getLastCompletedTrick(),
       tricksWon: { ...this.tricksWon },
       lastHandResult: this.lastHandResult,
+      handHistory: this.handHistory.slice(),
       matchWinner: this.matchWinner,
       openHand:
         this.openHandPlayer !== null

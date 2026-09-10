@@ -363,14 +363,29 @@ function renderScoreboard(state) {
       ? `El ${state.game.handNumber} · Hedef ${state.game.targetScore}`
       : `El ${state.game.handNumber}/${state.game.maxRounds}`;
   header.appendChild(el('div', 'score-chip', progressLabel));
-  for (let i = 0; i < 4; i++) {
-    const p = state.game.players[i];
-    let cls = 'score-chip' + (i === state.mySeat ? ' me' : '') + (state.game.turn === i ? ' turn' : '');
-    if (state.game.ruleSet.isTeamGame) cls += ' ' + teamClass(i);
-    const chip = el('div', cls);
-    chip.appendChild(el('span', 'name', p.name || '(boş)'));
-    chip.appendChild(el('span', 'pts', String(p.score)));
-    header.appendChild(chip);
+
+  if (state.game.ruleSet.isTeamGame) {
+    // Eşli masalarda takım arkadaşları her zaman aynı skoru paylaşır - tek skor olarak göster.
+    for (const team of [0, 1]) {
+      const seats = [team, team + 2];
+      const names = seats.map((i) => state.game.players[i].name || '(boş)').join(' & ');
+      const myTeam = state.mySeat !== null && teamOf(state.mySeat) === team;
+      const onTurn = state.game.turn !== null && teamOf(state.game.turn) === team;
+      let cls = 'score-chip' + (myTeam ? ' me' : '') + (onTurn ? ' turn' : '') + ' ' + teamClass(seats[0]);
+      const chip = el('div', cls);
+      chip.appendChild(el('span', 'name', `Takım ${team === 0 ? 'A' : 'B'}: ${names}`));
+      chip.appendChild(el('span', 'pts', String(state.game.players[seats[0]].score)));
+      header.appendChild(chip);
+    }
+  } else {
+    for (let i = 0; i < 4; i++) {
+      const p = state.game.players[i];
+      const cls = 'score-chip' + (i === state.mySeat ? ' me' : '') + (state.game.turn === i ? ' turn' : '');
+      const chip = el('div', cls);
+      chip.appendChild(el('span', 'name', p.name || '(boş)'));
+      chip.appendChild(el('span', 'pts', String(p.score)));
+      header.appendChild(chip);
+    }
   }
 }
 
@@ -708,6 +723,52 @@ function sendChat() {
   input.value = '';
 }
 
+/** Running (cumulative) score-by-hand table, shown at the bottom of the game screen. Eşli tables collapse to 2 team columns since teammates always share the same delta. */
+function renderScoreHistory(state) {
+  const panel = $('#score-history-panel');
+  const history = state.game.handHistory || [];
+  if (!history.length) {
+    panel.classList.add('hidden');
+    return;
+  }
+  panel.classList.remove('hidden');
+
+  const isTeam = state.game.ruleSet.isTeamGame;
+  const container = $('#scoreHistoryTable');
+  container.innerHTML = '';
+
+  const table = el('table', 'score-history-table');
+  const headRow = document.createElement('tr');
+  headRow.appendChild(el('th', null, 'El'));
+  if (isTeam) {
+    headRow.appendChild(el('th', null, 'Takım A (0-2)'));
+    headRow.appendChild(el('th', null, 'Takım B (1-3)'));
+  } else {
+    for (let i = 0; i < 4; i++) headRow.appendChild(el('th', null, state.game.players[i].name || `Oyuncu ${i + 1}`));
+  }
+  table.appendChild(headRow);
+
+  const running = { 0: 0, 1: 0, 2: 0, 3: 0 };
+  for (const hand of history) {
+    const row = document.createElement('tr');
+    row.appendChild(el('td', null, String(hand.handNumber)));
+    if (isTeam) {
+      running[0] += hand.scoreDelta[0];
+      running[1] += hand.scoreDelta[1];
+      row.appendChild(el('td', null, String(running[0])));
+      row.appendChild(el('td', null, String(running[1])));
+    } else {
+      for (let i = 0; i < 4; i++) {
+        running[i] += hand.scoreDelta[i];
+        row.appendChild(el('td', null, String(running[i])));
+      }
+    }
+    table.appendChild(row);
+  }
+  container.appendChild(table);
+  container.scrollTop = container.scrollHeight;
+}
+
 function renderGame(state) {
   showScreen('game');
   renderScoreboard(state);
@@ -722,6 +783,7 @@ function renderGame(state) {
   renderMatchCompletePanel(state);
   renderHand(state);
   renderChat(state);
+  renderScoreHistory(state);
   maybePlayTurnSound(state);
 }
 

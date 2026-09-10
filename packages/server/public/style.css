@@ -361,6 +361,17 @@ button:disabled { background: #444; color: #999; cursor: not-allowed; transform:
 
 .seat-pos .bot-tag { font-size: 10px; color: #c8b4ff; }
 
+#scoreHistoryTable { max-height: 220px; overflow-y: auto; }
+.score-history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.score-history-table th, .score-history-table td {
+  padding: 4px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--panel-border);
+}
+.score-history-table th:first-child, .score-history-table td:first-child { text-align: left; opacity: 0.75; }
+.score-history-table th { color: var(--gold); font-weight: 700; }
+.score-history-table tr:last-child td { font-weight: 700; color: var(--gold); }
+
 @keyframes dealtCard {
   from { transform: translateY(-24px) scale(0.85); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }

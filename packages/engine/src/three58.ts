@@ -174,7 +174,8 @@ export class ThreeFiveEightGame {
 
   getLegalPlays(seat: ThreeSeat): Card[] {
     if (this.phase !== 'PLAYING' || this.whoseTurn() !== seat) return [];
-    return legalPlays(this.hands[seat], this.currentTrick, this.trumpSuit);
+    // 3-5-8 doesn't use the Batak trump-breaking rule - trump may always be led.
+    return legalPlays(this.hands[seat], this.currentTrick, this.trumpSuit, true);
   }
 
   playCard(seat: ThreeSeat, card: Card): void {
@@ -183,7 +184,7 @@ export class ThreeFiveEightGame {
 
     const hand = this.hands[seat];
     if (!hand.some((c) => cardsEqual(c, card))) throw new BatakError('CARD_NOT_IN_HAND', 'card not in hand');
-    if (!isLegalPlay(card, hand, this.currentTrick, this.trumpSuit)) {
+    if (!isLegalPlay(card, hand, this.currentTrick, this.trumpSuit, true)) {
       throw new BatakError('MUST_FOLLOW_SUIT', 'illegal play: must follow suit if possible');
     }
 
