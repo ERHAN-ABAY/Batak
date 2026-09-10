@@ -307,6 +307,49 @@ describe('Game - BURIED_BID (Gömmeli Batak, §10)', () => {
   });
 });
 
+/**
+ * Independent (not reusing src/trick.ts) reference implementation of
+ * "who wins this trick", used only to cross-check the engine's own
+ * bookkeeping end-to-end (deal -> auction -> trump -> full play), separate
+ * from the already-thorough unit tests in trick.test.ts.
+ */
+function referenceTrickWinner(trick: { player: PlayerIndex; card: { suit: string; rank: number } }[], trumpSuit: string | null) {
+  const ledSuit = trick[0].card.suit;
+  const trumpsPlayed = trumpSuit ? trick.filter((tc) => tc.card.suit === trumpSuit) : [];
+  const pool = trumpsPlayed.length > 0 ? trumpsPlayed : trick.filter((tc) => tc.card.suit === ledSuit);
+  let best = pool[0];
+  for (const tc of pool) if (tc.card.rank > best.card.rank) best = tc;
+  return best.player;
+}
+
+describe('Game - trump always beats the led suit, end-to-end across many random deals', () => {
+  it('a ruff (trump played while void) wins the trick even against a higher card of the led suit - reproduces "kupa çıktı, kupam yok, koz attım, kupa aldı" NOT happening', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
+      game.startHand(seed);
+      const declarer = game.whoseTurn() as PlayerIndex;
+      runAuction(game, declarer, 5);
+      game.chooseTrump(declarer, 'S');
+
+      while (game.phase === 'PLAYING') {
+        const turn = game.whoseTurn() as PlayerIndex;
+        const state = game.getPublicState(turn);
+        const legal = legalPlays(state.hand, state.currentTrick, state.contract!.trumpSuit, state.trumpBroken);
+        const wasLastCardOfTrick = state.currentTrick.length === 3;
+        game.playCard(turn, legal[0]);
+
+        // Right after a trick, whoseTurn() is always the winner (trickLeader) - unless
+        // that was the hand's last trick, in which case play has already ended.
+        if (wasLastCardOfTrick && game.phase === 'PLAYING') {
+          const completed = game.getLastCompletedTrick()!;
+          const expectedWinner = referenceTrickWinner(completed as any, 'S');
+          expect(game.whoseTurn()).toBe(expectedWinner);
+        }
+      }
+    }
+  });
+});
+
 describe('Game - "koz kırılmadan koz ile çıkılamaz" (trump-breaking)', () => {
   it('a trick leader may not open with trump before it has been broken this hand', () => {
     const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
