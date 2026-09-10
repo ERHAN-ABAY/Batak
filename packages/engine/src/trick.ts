@@ -1,15 +1,35 @@
 import { Card, PlayerIndex, Suit, TrickCard } from './types.js';
 
+/** The card currently winning a trick (complete or partial - trick must be non-empty). */
+function bestCardInTrick(trick: TrickCard[], trumpSuit: Suit | null): TrickCard {
+  const ledSuit = trick[0].card.suit;
+  const trumpsPlayed = trumpSuit ? trick.filter((tc) => tc.card.suit === trumpSuit) : [];
+  const pool = trumpsPlayed.length > 0 ? trumpsPlayed : trick.filter((tc) => tc.card.suit === ledSuit);
+  return pool.reduce((best, tc) => (tc.card.rank > best.card.rank ? tc : best), pool[0]);
+}
+
 /**
  * Legal cards for whoever is now to act (§3 "El kazanma", §15 "Renk takip
- * zorunluluğu", plus the standard "koz kırılmadan koz ile çıkılamaz" trump-
- * breaking rule):
+ * zorunluluğu", plus real-table rules the source document doesn't spell
+ * out in full but that a live game must enforce):
+ *
  *  1. Following a trick already in progress: you must follow the led suit
- *     if you hold any card of it; if you're void, you're free to play
- *     trump OR any other suit (§15: "♥ yoksa koz atabilir veya başka renk
- *     oynayabilir") - there is no forced trump-when-void and no
- *     must-overtrump rule.
- *  2. Leading a trick: any non-trump card is always legal. A trump card
+ *     if you hold any card of it.
+ *  2. "Zorunlu kesme": if you're void in the led suit but hold trump, you
+ *     must play trump - you may not sluff a card of some third suit while
+ *     still holding trump. Only when you're void in the led suit AND hold
+ *     no trump at all are you free to discard anything.
+ *  3. "Üstüne basma zorunluluğu" (must-beat): within whichever set (1) or
+ *     (2) leaves you - your led-suit cards, or your trump cards if void -
+ *     if any of those cards would beat the trick's current best card (same
+ *     suit, higher rank), you must play one of those beating cards. Only
+ *     when none of your eligible cards can beat the current best are you
+ *     free to play anything from that set (e.g. you may trump in cheaply
+ *     with your lowest trump when you're the first to trump the trick,
+ *     since nothing there yet has your trump's suit to "beat"; but once
+ *     someone else has already trumped, you may not sit on a low trump if
+ *     you're holding a higher one that would take it).
+ *  4. Leading a trick: any non-trump card is always legal. A trump card
  *     may only be led once trump has been "broken" this hand - i.e. once
  *     some earlier trick has had a trump card played on it (necessarily as
  *     a ruff, since leading trump before it's broken is exactly what this
@@ -26,7 +46,13 @@ export function legalPlays(hand: Card[], trick: TrickCard[], trumpSuit: Suit | n
 
   const ledSuit = trick[0].card.suit;
   const cardsOfLedSuit = hand.filter((c) => c.suit === ledSuit);
-  return cardsOfLedSuit.length > 0 ? cardsOfLedSuit.slice() : hand.slice();
+  const trumpCards = trumpSuit ? hand.filter((c) => c.suit === trumpSuit) : [];
+  const eligible = cardsOfLedSuit.length > 0 ? cardsOfLedSuit : trumpCards.length > 0 ? trumpCards : hand;
+
+  const currentBest = bestCardInTrick(trick, trumpSuit).card;
+  const beating = eligible.filter((c) => c.suit === currentBest.suit && c.rank > currentBest.rank);
+
+  return (beating.length > 0 ? beating : eligible).slice();
 }
 
 export function isLegalPlay(
@@ -49,8 +75,5 @@ export function trickWinner(trick: TrickCard[], trumpSuit: Suit | null): PlayerI
   if (trick.length === 0) {
     throw new Error('cannot determine winner of an empty trick');
   }
-  const ledSuit = trick[0].card.suit;
-  const trumpsPlayed = trumpSuit ? trick.filter((tc) => tc.card.suit === trumpSuit) : [];
-  const pool = trumpsPlayed.length > 0 ? trumpsPlayed : trick.filter((tc) => tc.card.suit === ledSuit);
-  return pool.reduce((best, tc) => (tc.card.rank > best.card.rank ? tc : best), pool[0]).player;
+  return bestCardInTrick(trick, trumpSuit).player;
 }

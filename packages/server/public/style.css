@@ -285,7 +285,9 @@ button:disabled { background: #444; color: #999; cursor: not-allowed; transform:
   border-radius: 999px;
   box-shadow: 0 0 10px rgba(232, 193, 92, 0.35);
   white-space: nowrap;
+  margin: 0 auto 8px;
 }
+#game > .trump-badge { display: flex; width: fit-content; }
 .trump-badge .suit { font-size: 20px; }
 .trump-badge .suit.red { color: #ff6b6b; }
 .trump-badge.pending { border-style: dashed; opacity: 0.8; font-weight: 600; }

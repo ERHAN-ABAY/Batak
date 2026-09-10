@@ -16,6 +16,13 @@ let currentTableId = localStorage.getItem('batak.tableId') || null;
 let reconnectToken = localStorage.getItem('batak.reconnectToken') || null;
 let latestState = null;
 let lastTrickSignature = null;
+// A completed trick stays visible on the felt (and the hand stays locked) for
+// this long before the next trick's cards are shown - otherwise a fast bot
+// can clear the 4 finished cards almost instantly, which is confusing.
+const TRICK_FREEZE_MS = 1000;
+let trickFreezeUntil = 0;
+let trickFreezeTimer = null;
+let frozenTrickSignature = null;
 let lastChatCount = 0;
 
 const $ = (sel) => document.querySelector(sel);
@@ -117,12 +124,27 @@ function cardBackEl() {
   return el('div', 'card-back');
 }
 
-// ---------- Legal-play check (mirrors engine's follow-suit rule, §15) ----------
-function legalPlays(hand, trick) {
-  if (trick.length === 0) return hand;
+// ---------- Legal-play check (mirrors engine's trick.ts: follow-suit, must-beat, trump-breaking) ----------
+function bestCardInTrick(trick, trumpSuit) {
+  const ledSuit = trick[0].card.suit;
+  const trumpsPlayed = trumpSuit ? trick.filter((tc) => tc.card.suit === trumpSuit) : [];
+  const pool = trumpsPlayed.length > 0 ? trumpsPlayed : trick.filter((tc) => tc.card.suit === ledSuit);
+  return pool.reduce((best, tc) => (tc.card.rank > best.card.rank ? tc : best), pool[0]);
+}
+function legalPlays(hand, trick, trumpSuit, trumpBroken) {
+  if (trick.length === 0) {
+    if (!trumpSuit) return hand;
+    if (trumpBroken || hand.every((c) => c.suit === trumpSuit)) return hand;
+    const nonTrump = hand.filter((c) => c.suit !== trumpSuit);
+    return nonTrump.length > 0 ? nonTrump : hand;
+  }
   const ledSuit = trick[0].card.suit;
   const cardsOfLedSuit = hand.filter((c) => c.suit === ledSuit);
-  return cardsOfLedSuit.length > 0 ? cardsOfLedSuit : hand;
+  const trumpCards = trumpSuit ? hand.filter((c) => c.suit === trumpSuit) : [];
+  const eligible = cardsOfLedSuit.length > 0 ? cardsOfLedSuit : trumpCards.length > 0 ? trumpCards : hand;
+  const currentBest = bestCardInTrick(trick, trumpSuit).card;
+  const beating = eligible.filter((c) => c.suit === currentBest.suit && c.rank > currentBest.rank);
+  return beating.length > 0 ? beating : eligible;
 }
 
 // ---------- Team helpers ----------
@@ -455,13 +477,17 @@ function renderSeats(state) {
   }
 }
 
-function renderTrick(state) {
+function renderTrick(state, freezeTable) {
   const slots = document.querySelectorAll('.trick-slot');
   slots.forEach((s) => {
     s.innerHTML = '';
     s.classList.remove('winning');
   });
-  const trick = state.game.currentTrick.length ? state.game.currentTrick : state.game.lastCompletedTrick || [];
+  const trick = freezeTable
+    ? state.game.lastCompletedTrick || []
+    : state.game.currentTrick.length
+      ? state.game.currentTrick
+      : state.game.lastCompletedTrick || [];
   for (const tc of trick) {
     const pos = relPos(tc.player, state.mySeat);
     const slot = document.querySelector(`.trick-slot[data-pos="${pos}"]`);
@@ -663,12 +689,14 @@ function renderMatchCompletePanel(state) {
   panel.appendChild(el('h3', null, `Kazanan: ${winnerLabel}`));
 }
 
-function renderHand(state) {
+function renderHand(state, freezeHand) {
   const container = $('#hand');
   container.innerHTML = '';
   if (state.game.phase === 'EXCHANGE') return; // exchange panel handles card selection instead
-  const isPlayingTurn = state.game.phase === 'PLAYING' && state.game.turn === state.mySeat;
-  const legal = isPlayingTurn ? legalPlays(state.game.hand, state.game.currentTrick) : [];
+  const isPlayingTurn = !freezeHand && state.game.phase === 'PLAYING' && state.game.turn === state.mySeat;
+  const legal = isPlayingTurn
+    ? legalPlays(state.game.hand, state.game.currentTrick, state.game.contract?.trumpSuit ?? null, state.game.trumpBroken)
+    : [];
   for (const card of state.game.hand) {
     const isLegal = legal.some((c) => c.suit === card.suit && c.rank === card.rank);
     const disabled = !isPlayingTurn || !isLegal;
@@ -769,19 +797,19 @@ function renderScoreHistory(state) {
   container.scrollTop = container.scrollHeight;
 }
 
-function renderGame(state) {
+function renderGame(state, { freezeHand = false } = {}) {
   showScreen('game');
   renderScoreboard(state);
   renderTrumpBadge(state);
   renderSeats(state);
-  renderTrick(state);
+  renderTrick(state, freezeHand);
   renderOpenHandPanel(state);
   renderExchangePanel(state);
   renderBidPanel(state);
   renderTrumpPanel(state);
   renderHandCompletePanel(state);
   renderMatchCompletePanel(state);
-  renderHand(state);
+  renderHand(state, freezeHand);
   renderChat(state);
   renderScoreHistory(state);
   maybePlayTurnSound(state);
@@ -793,6 +821,23 @@ socket.on('table:update', (state) => {
   if (!state.game) {
     renderWaiting(state);
     renderChat(state);
+    return;
+  }
+
+  const sig = state.game.lastCompletedTrick ? JSON.stringify(state.game.lastCompletedTrick) : null;
+  const trickJustCompleted = sig && sig !== frozenTrickSignature && state.game.currentTrick.length === 0;
+  if (trickJustCompleted) {
+    frozenTrickSignature = sig;
+    trickFreezeUntil = Date.now() + TRICK_FREEZE_MS;
+  }
+
+  const remaining = trickFreezeUntil - Date.now();
+  if (remaining > 0) {
+    renderGame(state, { freezeHand: true });
+    clearTimeout(trickFreezeTimer);
+    trickFreezeTimer = setTimeout(() => {
+      if (latestState && latestState.game) renderGame(latestState);
+    }, remaining);
   } else {
     renderGame(state);
   }

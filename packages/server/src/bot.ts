@@ -4,35 +4,63 @@
  * legal card, and bids/commits using a small hand-strength heuristic. Kept
  * deliberately simple - this is the "Kolay" tier, not Normal/Zor/Uzman.
  */
-import { Bid, Card, Game, PlayerIndex, Suit } from '@batak/engine';
+import { Bid, Card, Game, MatchConfig, PlayerIndex, Suit } from '@batak/engine';
 
-function handStrength(hand: Card[]): number {
-  let strength = 0;
-  for (const c of hand) if (c.rank >= 13) strength += 1; // count K/A as strong cards
+const SUITS: Suit[] = ['S', 'H', 'D', 'C'];
 
-  const bySuit: Record<string, number> = { S: 0, H: 0, D: 0, C: 0 };
-  for (const c of hand) bySuit[c.suit] += 1;
-  const longestSuitLength = Math.max(...Object.values(bySuit));
-  strength += Math.max(0, longestSuitLength - 3);
-  return strength;
+/**
+ * Rough "playing tricks" estimate for one hand - how many tricks this hand
+ * could realistically take if its longest suit becomes trump:
+ *  - each Ace is a near-certain trick, each King close behind, a Queen
+ *    backed by at least one more card of that suit is a slim half-trick
+ *  - the single longest suit (the one a bot would actually choose as
+ *    trump) also earns a length bonus for cards beyond the first four,
+ *    since a long trump suit keeps winning tricks once the short suits
+ *    run out. Off-suits don't get this bonus - without trump backing,
+ *    length alone rarely turns into tricks.
+ */
+function estimateTricks(hand: Card[]): number {
+  const bySuit: Record<Suit, number[]> = { S: [], H: [], D: [], C: [] };
+  for (const c of hand) bySuit[c.suit].push(c.rank);
+
+  const longestSuit = SUITS.reduce((best, s) => (bySuit[s].length > bySuit[best].length ? s : best), SUITS[0]);
+
+  let total = 0;
+  for (const suit of SUITS) {
+    const ranks = bySuit[suit];
+    if (ranks.includes(14)) total += 1; // As
+    if (ranks.includes(13)) total += 1; // Papaz
+    if (ranks.includes(12) && ranks.length >= 2) total += 0.5; // Kız, desteklenmişse
+    if (suit === longestSuit) total += Math.max(0, ranks.length - 4) * 0.75;
+  }
+  return total;
+}
+
+/** The highest trick count this bot realistically believes it (or its team) can deliver. */
+function estimatedCeiling(config: MatchConfig, hand: Card[]): number {
+  let tricks = estimateTricks(hand);
+  if (config.isTeamGame) tricks += 3; // partner's hand is unknown - assume a modest average contribution
+  return Math.min(config.maximumBid, Math.max(0, Math.round(tricks)));
 }
 
 export function decideBotBid(game: Game, seat: PlayerIndex): Bid {
-  const state = game.getPublicState(seat);
-  const strength = handStrength(state.hand);
+  const hand = game.getPublicState(seat).hand;
 
   if (game.config.biddingStyle === 'commitment') {
-    // Koz Maça taahhütlü: always commits to a personal target, no pass.
-    const value = Math.min(game.config.maximumBid, Math.max(game.config.minimumBid, Math.round(strength / 2)));
+    // Koz Maça taahhütlü: a personal target, always required, no pass.
+    const value = Math.min(game.config.maximumBid, Math.max(game.config.minimumBid, Math.round(estimateTricks(hand))));
     return { player: seat, type: 'bid', value };
   }
 
-  const value = Math.min(game.config.maximumBid, game.config.minimumBid + Math.max(0, strength - 1));
-  const candidate: Bid = { player: seat, type: 'bid', value };
+  const ceiling = estimatedCeiling(game.config, hand);
+  const currentValue = game.getPublicState(seat).highestBid?.value ?? game.config.minimumBid - 1;
+  const nextValue = Math.max(currentValue + 1, game.config.minimumBid);
 
-  const currentValue = state.highestBid?.value ?? game.config.minimumBid - 1;
-  if (strength >= 3 && value > currentValue) {
-    return candidate;
+  // Raise by the minimum needed step, never straight to the ceiling - this
+  // keeps the winning bid close to what's actually required instead of
+  // bots jumping to (and overshooting) their own estimate immediately.
+  if (nextValue <= ceiling && nextValue <= game.config.maximumBid) {
+    return { player: seat, type: 'bid', value: nextValue };
   }
   return { player: seat, type: 'pas' };
 }
@@ -41,8 +69,7 @@ export function decideBotTrumpSuit(game: Game, seat: PlayerIndex): Suit {
   const hand = game.getPublicState(seat).hand;
   const bySuit: Record<Suit, number> = { S: 0, H: 0, D: 0, C: 0 };
   for (const c of hand) bySuit[c.suit] += 1;
-  const suits: Suit[] = ['S', 'H', 'D', 'C'];
-  return suits.reduce((best, s) => (bySuit[s] > bySuit[best] ? s : best), suits[0]);
+  return SUITS.reduce((best, s) => (bySuit[s] > bySuit[best] ? s : best), SUITS[0]);
 }
 
 export function decideBotPlay(game: Game, seat: PlayerIndex): Card {
