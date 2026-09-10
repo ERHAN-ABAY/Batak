@@ -118,11 +118,6 @@
 
   <section id="game" class="screen hidden">
     <div id="trumpBadge" class="trump-badge hidden"></div>
-    <header id="scoreboard-wrap">
-      <div id="modeBadges" class="badges"></div>
-      <div id="scoreboard"></div>
-      <button id="leaveGameBtn" class="btn-leave">Oyundan Çık</button>
-    </header>
 
     <div id="table-felt">
       <div id="seat-top" class="seat-pos"></div>
@@ -134,7 +129,6 @@
         <div class="trick-slot" data-pos="left"></div>
         <div class="trick-slot" data-pos="right"></div>
         <div class="trick-slot" data-pos="bottom"></div>
-        <div id="status-line"></div>
         <div id="turn-timer" class="hidden"></div>
       </div>
     </div>
@@ -161,6 +155,13 @@
       <h3>Skor Tablosu</h3>
       <div id="scoreHistoryTable"></div>
     </div>
+
+    <div id="status-line"></div>
+    <header id="scoreboard-wrap">
+      <div id="modeBadges" class="badges"></div>
+      <div id="scoreboard"></div>
+      <button id="leaveGameBtn" class="btn-leave">Oyundan Çık</button>
+    </header>
   </section>
 
   <script src="/socket.io/socket.io.js"></script>

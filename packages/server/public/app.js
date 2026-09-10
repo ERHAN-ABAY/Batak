@@ -483,11 +483,10 @@ function renderTrick(state, freezeTable) {
     s.innerHTML = '';
     s.classList.remove('winning');
   });
-  const trick = freezeTable
-    ? state.game.lastCompletedTrick || []
-    : state.game.currentTrick.length
-      ? state.game.currentTrick
-      : state.game.lastCompletedTrick || [];
+  // While frozen, keep showing the just-finished trick; once the freeze
+  // window ends, the felt goes empty again until the next card is played -
+  // it must not keep showing the old trick indefinitely.
+  const trick = freezeTable ? state.game.lastCompletedTrick || [] : state.game.currentTrick;
   for (const tc of trick) {
     const pos = relPos(tc.player, state.mySeat);
     const slot = document.querySelector(`.trick-slot[data-pos="${pos}"]`);
