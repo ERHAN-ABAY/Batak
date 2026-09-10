@@ -1,19 +1,18 @@
 /**
  * Core domain types for the Batak rule engine.
  *
- * Design note: all Turkish Batak contract types (koz, gizli, elsiz) live
- * inside ONE unified bidding auction. A table never needs a separate "game
- * mode" selector — which contract gets played simply depends on what the
- * players bid during that hand's auction. This mirrors how real Turkish
- * Batak sites work. A trump suit is always chosen for every contract
- * (there is no no-trump "kozsuz" bid) except in "Maça" mode, where trump
- * is always forced to Spades.
+ * Design note: this engine is built directly around the variant system
+ * defined in BATAK_DETAYLI_KURALLAR_VE_OYUN_TIPLERI.md. Each table picks one
+ * `VariantId` (section 27); the concrete rules for that variant are captured
+ * by an `IBatakRuleSet` (section 26) plus a handful of tunable extras
+ * (section 31). The engine never branches on variant name internally -
+ * everything reads from the resolved `MatchConfig`.
  */
 
-export type Suit = 'S' | 'H' | 'D' | 'C'; // Spades, Hearts, Diamonds, Clubs
+export type Suit = 'S' | 'H' | 'D' | 'C'; // Maça, Kupa, Karo, Sinek
 export const SUITS: Suit[] = ['S', 'H', 'D', 'C'];
 
-// 11=Jack, 12=Queen, 13=King, 14=Ace
+// 11=Vale, 12=Kız, 13=Papaz, 14=As
 export type Rank = 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
 export const RANKS: Rank[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 
@@ -33,7 +32,7 @@ export function cardsEqual(a: Card, b: Card): boolean {
 export type PlayerIndex = 0 | 1 | 2 | 3;
 export const PLAYER_INDICES: PlayerIndex[] = [0, 1, 2, 3];
 
-/** Fixed partnership seating: 0&2 are one team, 1&3 are the other. */
+/** Fixed partnership seating: 0&2 are one team, 1&3 are the other (§6). */
 export function partnerOf(player: PlayerIndex): PlayerIndex {
   return ((player + 2) % 4) as PlayerIndex;
 }
@@ -42,24 +41,61 @@ export function teamOf(player: PlayerIndex): 0 | 1 {
   return (player % 2) as 0 | 1;
 }
 
+/** The seven variant IDs defined in §27 of the rules document. */
+export type VariantId =
+  | 'NORMAL_BID'
+  | 'OPEN_BID'
+  | 'TEAM_BID'
+  | 'TEAM_OPEN_BID'
+  | 'SPADES'
+  | 'TEAM_SPADES'
+  | 'BURIED_BID';
+
+export const VARIANT_IDS: VariantId[] = [
+  'NORMAL_BID',
+  'OPEN_BID',
+  'TEAM_BID',
+  'TEAM_OPEN_BID',
+  'SPADES',
+  'TEAM_SPADES',
+  'BURIED_BID',
+];
+
 /**
- * Bid types. A koz (trump) suit is ALWAYS chosen for the winning bid before
- * play starts (CHOOSING_TRUMP phase) - there is no no-trump ("kozsuz")
- * contract in this game; the only exception is "Maça" mode, where trump is
- * always forced to Spades automatically.
- *  - 'pas'   : player passes for this auction
- *  - 'koz'   : bids `value` tricks (5-13) and will name a trump suit if won
- *  - 'gizli' : blind bid - commits to taking ALL tricks, trump named after
- *              winning, declared before rearranging/looking closely at the
- *              hand. Highest risk / highest reward contract.
- *  - 'elsiz' : commits to taking ZERO tricks for the whole hand.
+ * The shared rule-set contract every variant implements (§26). Kept as a
+ * literal port of the document's `IBatakRuleSet` interface (field-for-field)
+ * so the mapping to the source spec stays obvious.
  */
-export type BidType = 'pas' | 'koz' | 'gizli' | 'elsiz';
+export interface IBatakRuleSet {
+  playerCount: number;
+  cardsPerPlayer: number;
+  totalTricks: number;
+  minimumBid: number;
+  maximumBid: number;
+
+  isTeamGame: boolean;
+  isOpenBidding: boolean;
+  mustFollowSuit: boolean;
+  canPass: boolean;
+  bidWinnerChoosesTrump: boolean;
+  bidWinnerStarts: boolean;
+
+  fixedTrump: Suit | null;
+}
+
+/**
+ * A bid during the auction (NORMAL_BID/OPEN_BID/TEAM_BID/TEAM_OPEN_BID/
+ * BURIED_BID) or a personal commitment during Koz Maça taahhütlü bidding
+ * (SPADES/TEAM_SPADES, §8 Mod B / §9) - both flows share this shape:
+ * `pas` only exists in the competitive auction, a commitment is always a
+ * `bid` with a `value`.
+ */
+export type BidType = 'pas' | 'bid';
 
 export interface Bid {
   player: PlayerIndex;
   type: BidType;
-  /** Trick target, only meaningful for 'koz' (range minBid..maxBid). */
+  /** Trick target, required when type='bid' (range minimumBid..maximumBid). */
   value?: number;
 }
 
@@ -78,140 +114,70 @@ export interface TrickCard {
 }
 
 export interface Contract {
-  declarer: PlayerIndex;
-  type: 'koz' | 'gizli' | 'elsiz';
-  /** Trick target the declarer must reach (maxBid for gizli, 0 for elsiz). */
-  target: number;
-  /** Always set once the contract is playable - trump is never optional. */
+  /** The auction winner for auction-style variants; null for commitment-style Koz Maça deals with no single winner. */
+  declarer: PlayerIndex | null;
+  /** Always set once the contract is playable - a trump suit is required for every contract (§4, §7). */
   trumpSuit: Suit | null;
+  /**
+   * Per-player trick target. Populated for the declarer in solo auction
+   * variants, or for every seat in Koz Maça taahhütlü mode (§8 Mod B). A
+   * missing entry means "no personal target" (flat trick-count scoring).
+   */
+  targets: Partial<Record<PlayerIndex, number>>;
+  /**
+   * Per-team trick target (§6, §9). Populated for the declaring team in
+   * team auction variants, or for both teams in Eşli Koz Maça. A missing
+   * entry means that team has no target of its own.
+   */
+  teamTargets: Partial<Record<0 | 1, number>>;
 }
 
 export interface HandResult {
   handNumber: number;
   dealer: PlayerIndex;
+  variantId: VariantId;
   contract: Contract;
   tricksWon: Record<PlayerIndex, number>;
   scoreDelta: Record<PlayerIndex, number>;
 }
 
-/** How a successful (made) 'koz'/'gizli' contract is scored. */
-export type ScoringMode = 'takenTricks' | 'bidOnly' | 'bidPlusOvertricks';
-/** How a failed (batak) 'koz'/'gizli' contract is penalized. */
-export type PenaltyMode = 'negativeBid' | 'negativeTaken' | 'fixedPenalty';
-/** How a full match ends. */
+/** How a made/failed contract is scored (§19 - a direct port of the document's three named modes). */
+export type ScoreMode = 'TakenMinusBidOnFail' | 'BidOnly' | 'Multiplier10';
+/** How a full match ends (§18). */
 export type GameEndMode = 'targetScore' | 'fixedHands';
-/** What happens when all 4 players pass during the auction. */
+/** What happens when every player passes during an auction (§6.4/§12). */
 export type AllPassAction = 'redeal' | 'dealerTakesMinimum';
+/** Koz Maça Eşli's two team-bidding shapes (§9). */
+export type TeamBidMode = 'individualSum' | 'directTeam';
+/** How the current auction/commitment round is driven. */
+export type BiddingStyle = 'auction' | 'commitment' | 'none';
 
-export interface MatchConfig {
-  /** Minimum trick count for a 'koz' bid. */
-  minBid: number;
-  /** Maximum trick count for a 'koz' bid (also the full hand size). */
-  maxBid: number;
+/**
+ * Full per-table configuration: the variant's `IBatakRuleSet` plus the
+ * tunable extras §31 calls out ("Özellikle şu değerler konfigüre edilebilir
+ * olmalıdır"). Always built via `createMatchConfig()` - never hand-rolled -
+ * so the identity fields (playerCount, fixedTrump, isTeamGame, ...) stay
+ * consistent with the chosen `variantId`.
+ */
+export interface MatchConfig extends IBatakRuleSet {
+  variantId: VariantId;
+  biddingStyle: BiddingStyle;
 
-  /**
-   * Declarer scoring on a MADE contract:
-   *  - 'takenTricks'      : score += tricks actually taken (default; e.g. bid 7, took 9 -> +9)
-   *  - 'bidOnly'           : score += the bid, overtricks ignored (bid 7, took 9 -> +7)
-   *  - 'bidPlusOvertricks' : score += bid + overtrickPoints per trick beyond the bid
-   */
-  scoringMode: ScoringMode;
-  /** Per-overtrick point value, only used when scoringMode = 'bidPlusOvertricks'. */
-  overtrickPoints: number;
-  /**
-   * Declarer penalty on a FAILED (batak) contract:
-   *  - 'negativeBid'   : score -= the bid (default; e.g. bid 8, took 5 -> -8)
-   *  - 'negativeTaken' : score -= the shortfall (bid - taken)
-   *  - 'fixedPenalty'  : score -= fixedPenaltyPoints, regardless of the bid
-   */
-  penaltyMode: PenaltyMode;
-  /** Flat penalty, only used when penaltyMode = 'fixedPenalty'. */
-  fixedPenaltyPoints: number;
-  /**
-   * Flat score awarded/deducted for a successful/failed 'elsiz' (0-trick)
-   * contract - a plain taken-tricks formula is meaningless when the target
-   * is zero, so elsiz always uses this dedicated flat value regardless of
-   * scoringMode/penaltyMode. Not defined by the source spec; kept tunable.
-   */
-  elsizPoints: number;
-  /** Flat points earned per trick won by a non-declarer (or non-declaring-team) player. */
-  pointsPerTrick: number;
-
-  /** How a match ends: reach `targetScore` (default) or play a fixed `handsPerMatch`. */
+  scoreMode: ScoreMode;
   gameEndMode: GameEndMode;
-  /** Cumulative score that ends the match when gameEndMode = 'targetScore'. */
   targetScore: number;
-  /** Hands per match when gameEndMode = 'fixedHands'. */
-  handsPerMatch: number;
-
-  /** What happens when all 4 players pass: redeal, or the dealer takes minBid automatically. */
+  maxRounds: number;
   allPassAction: AllPassAction;
 
-  /**
-   * Must a player who is void in the led suit play a trump if they hold
-   * one (cannot sluff a third suit while holding trump)? Default true.
-   */
-  mustTrumpWhenVoid: boolean;
-  /**
-   * Within whichever category you must play from (led suit, or trump when
-   * void), must you play a card that beats the current best card of the
-   * trick if you have one ("üstüne basma zorunluluğu")? Default true -
-   * only when none of your eligible cards can beat the current best are
-   * you free to play any of them (typically your smallest).
-   */
-  mustOvertrumpOrBeat: boolean;
-
-  /**
-   * "Eşli" mode: seats 0&2 are Team A, seats 1&3 are Team B. Contract
-   * success/failure and trick points are scored per-team instead of
-   * per-player (both teammates always end a hand with the same delta).
-   */
-  partnership: boolean;
-  /**
-   * "Açık" mode: once the auction resolves, the declarer's partner's hand
-   * is revealed face-up to every player for the rest of the hand (bridge-
-   * style dummy). Only meaningful when `partnership` is also true.
-   */
-  openHand: boolean;
-  /**
-   * "Maça" mode: trump is always forced to Spades. The auction only
-   * accepts 'koz' (and 'pas') bids - 'gizli' / 'elsiz' are disabled, and
-   * the winning declarer never chooses a suit; the CHOOSING_TRUMP phase
-   * is skipped entirely.
-   */
-  fixedSpadesTrump: boolean;
-
-  /**
-   * "Gömmeli" mode: a kitty is set aside during dealing (so each player
-   * gets fewer than 13 cards - (52-buriedCardCount)/4 each). Once the
-   * auction resolves, the declarer picks up the kitty and must discard
-   * back down to the normal hand size before trump selection/play
-   * (GamePhase 'EXCHANGE'). `buriedCardCount` must be a multiple of 4 so
-   * the remaining cards split evenly; maxBid is auto-derived from it.
-   */
+  /** Gömmeli mode (BURIED_BID only, §10). */
   buriedCards: boolean;
-  /** Kitty size for Gömmeli mode. Must be a multiple of 4. */
   buriedCardCount: number;
-}
 
-export const DEFAULT_MATCH_CONFIG: MatchConfig = {
-  minBid: 5,
-  maxBid: 13,
-  scoringMode: 'takenTricks',
-  overtrickPoints: 1,
-  penaltyMode: 'negativeBid',
-  fixedPenaltyPoints: 10,
-  elsizPoints: 20,
-  pointsPerTrick: 1,
-  gameEndMode: 'targetScore',
-  targetScore: 101,
-  handsPerMatch: 8,
-  allPassAction: 'dealerTakesMinimum',
-  mustTrumpWhenVoid: true,
-  mustOvertrumpOrBeat: true,
-  partnership: false,
-  openHand: false,
-  fixedSpadesTrump: false,
-  buriedCards: false,
-  buriedCardCount: 4,
-};
+  /** Koz Maça Mod A ("İhalesiz", §8) vs Mod B ("Taahhütlü", §8) - SPADES/TEAM_SPADES only. */
+  spadesBiddingEnabled: boolean;
+  /** Eşli Koz Maça's two submodes (§9) - TEAM_SPADES only. */
+  teamBidMode: TeamBidMode;
+
+  reconnectSeconds: number;
+  botTakeoverSeconds: number;
+}

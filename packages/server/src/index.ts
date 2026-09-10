@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server, Socket } from 'socket.io';
-import { BatakError, Bid, GameEndMode, PenaltyMode, PlayerIndex, ScoringMode, Suit } from '@batak/engine';
+import { AllPassAction, BatakError, Bid, GameEndMode, PlayerIndex, ScoreMode, Suit, TeamBidMode, VariantId } from '@batak/engine';
 import { decideBotBid, decideBotExchange, decideBotPlay, decideBotTrumpSuit } from './bot.js';
 import { createTable, findTableBySocket, getTable, listOpenTables, removeTable } from './rooms.js';
 import { Table } from './table.js';
@@ -17,13 +17,12 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: '*' } });
 
 // --- Timers: AFK turn timeouts (bidding 20s / trump+exchange 20s / play 30s)
-// and near-instant bot moves. See BATAK_OYUN_KURALLARI_VE_TEKNIK_SPEK.md §30.
+// and near-instant bot moves. Reconnect/bot-takeover delays instead come from
+// the table's own `reconnectSeconds`/`botTakeoverSeconds` config (§31, §23).
 const BID_TIMEOUT_MS = 20_000;
 const TRUMP_OR_EXCHANGE_TIMEOUT_MS = 20_000;
 const PLAY_TIMEOUT_MS = 30_000;
-const BOT_MOVE_DELAY_MS = 900;
-// A human who stays disconnected this long has their seat taken over by a bot (§29).
-const RECONNECT_TIMEOUT_MS = 60_000;
+const DEFAULT_RECONNECT_MS = 30_000;
 
 const turnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const turnDeadlines = new Map<string, number>();
@@ -71,8 +70,9 @@ function scheduleNextActionTimer(table: Table): void {
   const seatInfo = table.seats[turn];
   const isBot = !!seatInfo?.isBot;
 
+  const botMoveDelayMs = game.config.botTakeoverSeconds * 1000;
   const ms = isBot
-    ? BOT_MOVE_DELAY_MS
+    ? botMoveDelayMs
     : phase === 'BIDDING'
       ? BID_TIMEOUT_MS
       : phase === 'PLAYING'
@@ -91,17 +91,22 @@ function scheduleNextActionTimer(table: Table): void {
         else if (phase === 'CHOOSING_TRUMP') g.chooseTrump(turn, decideBotTrumpSuit(g, turn));
         else if (phase === 'EXCHANGE') g.exchangeCards(turn, decideBotExchange(g, turn));
         else if (phase === 'PLAYING') g.playCard(turn, decideBotPlay(g, turn));
-      } else {
-        // AFK human fallback - spec-literal simple defaults for bid/play,
-        // a sensible default for trump/exchange (not specified by the spec).
-        if (phase === 'BIDDING') g.submitBid(turn, { player: turn, type: 'pas' });
-        else if (phase === 'CHOOSING_TRUMP') g.chooseTrump(turn, decideBotTrumpSuit(g, turn));
-        else if (phase === 'EXCHANGE') g.exchangeCards(turn, decideBotExchange(g, turn));
-        else if (phase === 'PLAYING') {
-          const legal = g.getLegalPlays(turn);
-          const lowest = legal.slice().sort((a, b) => a.rank - b.rank)[0];
-          if (lowest) g.playCard(turn, lowest);
+      } else if (phase === 'BIDDING') {
+        // AFK human fallback: pass in an auction, or the minimum commitment
+        // in Koz Maça taahhütlü mode (where passing isn't allowed, §8 Mod B).
+        if (g.config.biddingStyle === 'commitment') {
+          g.submitBid(turn, { player: turn, type: 'bid', value: g.config.minimumBid });
+        } else {
+          g.submitBid(turn, { player: turn, type: 'pas' });
         }
+      } else if (phase === 'CHOOSING_TRUMP') {
+        g.chooseTrump(turn, decideBotTrumpSuit(g, turn));
+      } else if (phase === 'EXCHANGE') {
+        g.exchangeCards(turn, decideBotExchange(g, turn));
+      } else if (phase === 'PLAYING') {
+        const legal = g.getLegalPlays(turn);
+        const lowest = legal.slice().sort((a, b) => a.rank - b.rank)[0];
+        if (lowest) g.playCard(turn, lowest);
       }
     } catch {
       // best-effort auto-action; leave the table as-is if it somehow fails
@@ -123,13 +128,14 @@ function clearReconnectTimer(tableId: string, seat: PlayerIndex): void {
 function scheduleBotTakeover(table: Table, seat: PlayerIndex): void {
   const key = `${table.id}:${seat}`;
   clearReconnectTimer(table.id, seat);
+  const ms = table.game ? table.game.config.reconnectSeconds * 1000 : DEFAULT_RECONNECT_MS;
   const timer = setTimeout(() => {
     reconnectTimers.delete(key);
     const seatInfo = table.seats[seat];
     if (!seatInfo || seatInfo.connected || seatInfo.isBot) return;
     seatInfo.isBot = true;
     broadcast(table);
-  }, RECONNECT_TIMEOUT_MS);
+  }, ms);
   reconnectTimers.set(key, timer);
 }
 
@@ -142,7 +148,6 @@ function tableView(table: Table, forPlayerId: string) {
     tableId: table.id,
     tableName: table.name,
     hostPlayerId: table.hostPlayerId,
-    modes: table.modes,
     rules: table.rules,
     seats: table.seats.map((s) =>
       s ? { name: s.name, connected: s.connected, isBot: s.isBot } : null
@@ -198,41 +203,36 @@ io.on('connection', (socket: Socket) => {
         playerId: string;
         name: string;
         tableName?: string;
-        partnership?: boolean;
-        openHand?: boolean;
-        fixedSpadesTrump?: boolean;
-        strictTrumpRules?: boolean;
-        buriedCards?: boolean;
+        variantId?: VariantId;
         allowSpectators?: boolean;
-        scoringMode?: ScoringMode;
-        penaltyMode?: PenaltyMode;
+        minimumBid?: number;
+        maximumBid?: number;
+        scoreMode?: ScoreMode;
         gameEndMode?: GameEndMode;
         targetScore?: number;
-        handsPerMatch?: number;
-        minBid?: number;
+        maxRounds?: number;
+        allPassAction?: AllPassAction;
+        buriedCardCount?: number;
+        spadesBiddingEnabled?: boolean;
+        teamBidMode?: TeamBidMode;
       },
       ack?: (res: unknown) => void
     ) => {
       try {
-        const table = createTable(
-          payload.tableName ?? '',
-          {
-            partnership: payload.partnership,
-            openHand: payload.openHand,
-            fixedSpadesTrump: payload.fixedSpadesTrump,
-            strictTrumpRules: payload.strictTrumpRules,
-            buriedCards: payload.buriedCards,
-            allowSpectators: payload.allowSpectators,
-          },
-          {
-            scoringMode: payload.scoringMode,
-            penaltyMode: payload.penaltyMode,
-            gameEndMode: payload.gameEndMode,
-            targetScore: payload.targetScore,
-            handsPerMatch: payload.handsPerMatch,
-            minBid: payload.minBid,
-          }
-        );
+        const table = createTable(payload.tableName ?? '', {
+          variantId: payload.variantId,
+          allowSpectators: payload.allowSpectators,
+          minimumBid: payload.minimumBid,
+          maximumBid: payload.maximumBid,
+          scoreMode: payload.scoreMode,
+          gameEndMode: payload.gameEndMode,
+          targetScore: payload.targetScore,
+          maxRounds: payload.maxRounds,
+          allPassAction: payload.allPassAction,
+          buriedCardCount: payload.buriedCardCount,
+          spadesBiddingEnabled: payload.spadesBiddingEnabled,
+          teamBidMode: payload.teamBidMode,
+        });
         const res = table.join(payload.playerId, payload.name, socket.id);
         socket.join(table.id);
         ack?.({ tableId: table.id, reconnectToken: res.reconnectToken });

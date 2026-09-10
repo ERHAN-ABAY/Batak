@@ -11,99 +11,47 @@ describe('legalPlays - leading', () => {
   });
 });
 
-describe('legalPlays - following suit, must beat if possible', () => {
-  it('must play a higher card of the led suit if one is available', () => {
+describe('legalPlays - following suit (§15)', () => {
+  it('must follow suit when holding any card of the led suit, regardless of rank', () => {
     const hand = [c(5, 'S'), c(10, 'H'), c(2, 'H')];
     const trick = [{ player: 0 as const, card: c(9, 'H') }];
-    expect(legalPlays(hand, trick, null)).toEqual([c(10, 'H')]);
+    expect(legalPlays(hand, trick, null)).toEqual([c(10, 'H'), c(2, 'H')]);
   });
 
-  it('allows any card of the led suit when none can beat the current best', () => {
-    const hand = [c(5, 'S'), c(8, 'H'), c(2, 'H')];
-    const trick = [{ player: 0 as const, card: c(9, 'H') }];
-    expect(legalPlays(hand, trick, null)).toEqual([c(8, 'H'), c(2, 'H')]);
-  });
-
-  it('following suit is unconstrained once a trump has already been played (cannot beat it anyway)', () => {
+  it('following suit is unaffected by a trump already played elsewhere in the trick', () => {
     const hand = [c(14, 'H'), c(2, 'H')];
     const trick = [
       { player: 0 as const, card: c(9, 'H') },
-      { player: 1 as const, card: c(3, 'S') }, // trumped in
+      { player: 1 as const, card: c(3, 'S') },
     ];
     expect(legalPlays(hand, trick, 'S')).toEqual(hand);
   });
 });
 
-describe('legalPlays - void in led suit', () => {
-  it('must trump when holding trump ("zorunlu kesme"), cannot sluff a third suit', () => {
-    const hand = [c(5, 'D'), c(3, 'S')]; // no H, has S(trump)
-    const trick = [{ player: 0 as const, card: c(9, 'H') }];
-    expect(legalPlays(hand, trick, 'S')).toEqual([c(3, 'S')]);
-  });
-
-  it('any trump is legal when first to trump the trick', () => {
-    const hand = [c(5, 'D'), c(3, 'S'), c(9, 'S')];
-    const trick = [{ player: 0 as const, card: c(9, 'H') }];
-    expect(legalPlays(hand, trick, 'S')).toEqual([c(3, 'S'), c(9, 'S')]);
-  });
-
-  it('must overtrump if a higher trump is held once trump has already been played', () => {
-    const hand = [c(5, 'D'), c(4, 'S'), c(9, 'S')];
-    const trick = [
-      { player: 0 as const, card: c(9, 'H') },
-      { player: 1 as const, card: c(6, 'S') },
-    ];
-    expect(legalPlays(hand, trick, 'S')).toEqual([c(9, 'S')]);
-  });
-
-  it('may play any trump if none can overtrump the current best trump', () => {
-    const hand = [c(5, 'D'), c(4, 'S'), c(2, 'S')];
-    const trick = [
-      { player: 0 as const, card: c(9, 'H') },
-      { player: 1 as const, card: c(11, 'S') },
-    ];
-    expect(legalPlays(hand, trick, 'S')).toEqual([c(4, 'S'), c(2, 'S')]);
-  });
-
-  it('discards freely when void in led suit and has no trump', () => {
-    const hand = [c(5, 'D'), c(3, 'C')];
+describe('legalPlays - void in led suit (§15: "koz atabilir veya başka renk oynayabilir")', () => {
+  it('may play trump or any other card - no forced trump, no forced overtrump', () => {
+    const hand = [c(5, 'D'), c(3, 'S'), c(2, 'C')];
     const trick = [{ player: 0 as const, card: c(9, 'H') }];
     expect(legalPlays(hand, trick, 'S')).toEqual(hand);
   });
 
-  it('discards freely whenever there is no trump suit in play (trumpSuit=null)', () => {
+  it('discards freely when there is no trump suit in play (trumpSuit=null)', () => {
     const hand = [c(5, 'D'), c(3, 'C'), c(14, 'S')];
     const trick = [{ player: 0 as const, card: c(9, 'H') }];
     expect(legalPlays(hand, trick, null)).toEqual(hand);
   });
 });
 
-describe('legalPlays - configurable rules', () => {
-  it('mustTrumpWhenVoid=false allows sluffing a third suit even while holding trump', () => {
-    const hand = [c(5, 'D'), c(3, 'S')];
-    const trick = [{ player: 0 as const, card: c(9, 'H') }];
-    const relaxed = legalPlays(hand, trick, 'S', { mustTrumpWhenVoid: false, mustOvertrumpOrBeat: true });
-    expect(relaxed).toEqual(hand);
-  });
-
-  it('mustOvertrumpOrBeat=false allows playing a lower card even when a beating one is available', () => {
-    const hand = [c(5, 'S'), c(10, 'H'), c(2, 'H')];
-    const trick = [{ player: 0 as const, card: c(9, 'H') }];
-    const relaxed = legalPlays(hand, trick, null, { mustTrumpWhenVoid: true, mustOvertrumpOrBeat: false });
-    expect(relaxed).toEqual([c(10, 'H'), c(2, 'H')]);
-  });
-});
-
 describe('isLegalPlay', () => {
-  it('rejects a play that violates the must-beat rule', () => {
+  it('rejects a card of a suit other than the led one when the led suit is held', () => {
     const hand = [c(5, 'S'), c(2, 'H'), c(10, 'H')];
     const trick = [{ player: 0 as const, card: c(9, 'H') }];
-    expect(isLegalPlay(c(2, 'H'), hand, trick, null)).toBe(false);
-    expect(isLegalPlay(c(10, 'H'), hand, trick, null)).toBe(true);
+    expect(isLegalPlay(c(5, 'S'), hand, trick, null)).toBe(false);
+    expect(isLegalPlay(c(2, 'H'), hand, trick, null)).toBe(true);
   });
 });
 
-describe('trickWinner', () => {
+describe('trickWinner (§3, §10)', () => {
   it('highest trump wins over any led-suit card', () => {
     const trick = [
       { player: 0 as const, card: c(14, 'H') },
@@ -122,5 +70,15 @@ describe('trickWinner', () => {
       { player: 3 as const, card: c(2, 'H') },
     ];
     expect(trickWinner(trick, null)).toBe(2);
+  });
+
+  it('the worked example from §3: koz ♠, highest played is 2♠', () => {
+    const trick = [
+      { player: 0 as const, card: c(14, 'H') },
+      { player: 1 as const, card: c(10, 'H') },
+      { player: 2 as const, card: c(2, 'S') },
+      { player: 3 as const, card: c(13, 'H') },
+    ];
+    expect(trickWinner(trick, 'S')).toBe(2);
   });
 });

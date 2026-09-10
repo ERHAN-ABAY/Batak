@@ -1,15 +1,12 @@
 /**
- * "Easy" bot AI (per BATAK_OYUN_KURALLARI_VE_TEKNIK_SPEK.md §20.1):
+ * "Easy" bot AI (per BATAK_DETAYLI_KURALLAR_VE_OYUN_TIPLERI.md §22):
  * follows suit (via the engine's own legality checks), plays a random
- * legal card, and bids using a small hand-strength heuristic. Kept
- * deliberately simple - this is the "Easy" tier, not Normal/Hard/Expert.
+ * legal card, and bids/commits using a small hand-strength heuristic. Kept
+ * deliberately simple - this is the "Kolay" tier, not Normal/Zor/Uzman.
  */
-import { Bid, Card, Game, PlayerIndex, Suit, bidStrength } from '@batak/engine';
+import { Bid, Card, Game, PlayerIndex, Suit } from '@batak/engine';
 
-export function decideBotBid(game: Game, seat: PlayerIndex): Bid {
-  const state = game.getPublicState(seat);
-  const hand = state.hand;
-
+function handStrength(hand: Card[]): number {
   let strength = 0;
   for (const c of hand) if (c.rank >= 13) strength += 1; // count K/A as strong cards
 
@@ -17,12 +14,24 @@ export function decideBotBid(game: Game, seat: PlayerIndex): Bid {
   for (const c of hand) bySuit[c.suit] += 1;
   const longestSuitLength = Math.max(...Object.values(bySuit));
   strength += Math.max(0, longestSuitLength - 3);
+  return strength;
+}
 
-  const value = Math.min(game.config.maxBid, game.config.minBid + Math.max(0, strength - 1));
-  const candidate: Bid = { player: seat, type: 'koz', value };
+export function decideBotBid(game: Game, seat: PlayerIndex): Bid {
+  const state = game.getPublicState(seat);
+  const strength = handStrength(state.hand);
 
-  const currentStrength = state.highestBid ? bidStrength(state.highestBid, game.config) : -1;
-  if (strength >= 3 && bidStrength(candidate, game.config) > currentStrength) {
+  if (game.config.biddingStyle === 'commitment') {
+    // Koz Maça taahhütlü: always commits to a personal target, no pass.
+    const value = Math.min(game.config.maximumBid, Math.max(game.config.minimumBid, Math.round(strength / 2)));
+    return { player: seat, type: 'bid', value };
+  }
+
+  const value = Math.min(game.config.maximumBid, game.config.minimumBid + Math.max(0, strength - 1));
+  const candidate: Bid = { player: seat, type: 'bid', value };
+
+  const currentValue = state.highestBid?.value ?? game.config.minimumBid - 1;
+  if (strength >= 3 && value > currentValue) {
     return candidate;
   }
   return { player: seat, type: 'pas' };

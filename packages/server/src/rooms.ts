@@ -1,4 +1,4 @@
-import { Table, TableModes, TableRules } from './table.js';
+import { Table, TableRules } from './table.js';
 
 const tables = new Map<string, Table>();
 
@@ -12,13 +12,9 @@ function generateTableId(): string {
   return code;
 }
 
-export function createTable(
-  name: string,
-  modes: Partial<TableModes> = {},
-  rules: Partial<TableRules> = {}
-): Table {
+export function createTable(name: string, rules: Partial<TableRules> = {}): Table {
   const id = generateTableId();
-  const table = new Table(id, name || `Masa ${id}`, modes, rules);
+  const table = new Table(id, name || `Masa ${id}`, rules);
   tables.set(id, table);
   return table;
 }

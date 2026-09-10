@@ -1,92 +1,63 @@
 import { BatakErrorCode } from './errors.js';
 import { Bid, MatchConfig } from './types.js';
 
-/**
- * Strength ordering for the auction. Each new (non-pass) bid must strictly
- * exceed the current highest bid's strength.
- *
- *   koz(v) -> v*10   (50..130 for v in 5..13)
- *   elsiz  -> 140    - committing to zero tricks is very hard to pull off
- *   gizli  -> 200    - blind bid for the whole hand, the strongest possible contract
- */
-export function bidStrength(bid: Bid, config: MatchConfig): number {
-  switch (bid.type) {
-    case 'pas':
-      return -1;
-    case 'koz':
-      return (bid.value ?? 0) * 10;
-    case 'elsiz':
-      return 140;
-    case 'gizli':
-      return 200;
-    default:
-      return -1;
-  }
-}
-
 export interface BidValidationResult {
   valid: boolean;
   code?: BatakErrorCode;
   reason?: string;
 }
 
-export function validateBid(
+/**
+ * Auction bid validation (NORMAL_BID/OPEN_BID/TEAM_BID/TEAM_OPEN_BID/
+ * BURIED_BID, §12/§13): pas is always allowed, and any raise must be a
+ * whole number strictly greater than the current highest bid (or at least
+ * `minimumBid` if nobody has bid yet).
+ */
+export function validateAuctionBid(
   bid: Bid,
-  currentHighest: Bid | null,
+  currentHighestValue: number | null,
   config: MatchConfig
 ): BidValidationResult {
   if (bid.type === 'pas') {
+    if (!config.canPass) {
+      return { valid: false, code: 'INVALID_BID', reason: 'bu varyantta pas geçilemez' };
+    }
     return { valid: true };
   }
 
-  if (config.fixedSpadesTrump && bid.type !== 'koz') {
-    return {
-      valid: false,
-      code: 'INVALID_BID',
-      reason: 'bu masada koz her zaman maça - sadece koz veya pas teklif edilebilir',
-    };
+  const v = bid.value;
+  if (v === undefined || !Number.isInteger(v)) {
+    return { valid: false, code: 'INVALID_BID', reason: 'value must be an integer' };
+  }
+  if (v < config.minimumBid) {
+    return { valid: false, code: 'BID_TOO_LOW', reason: `value must be at least ${config.minimumBid}` };
+  }
+  if (v > config.maximumBid) {
+    return { valid: false, code: 'BID_TOO_HIGH', reason: `value must be at most ${config.maximumBid}` };
   }
 
-  if (bid.type === 'koz') {
-    const v = bid.value;
-    if (v === undefined || !Number.isInteger(v)) {
-      return { valid: false, code: 'INVALID_BID', reason: 'value must be an integer' };
-    }
-    if (v < config.minBid) {
-      return {
-        valid: false,
-        code: 'BID_TOO_LOW',
-        reason: `value must be at least ${config.minBid}`,
-      };
-    }
-    if (v > config.maxBid) {
-      return {
-        valid: false,
-        code: 'BID_TOO_HIGH',
-        reason: `value must be at most ${config.maxBid}`,
-      };
-    }
-  }
-
-  const strength = bidStrength(bid, config);
-  const currentStrength = currentHighest ? bidStrength(currentHighest, config) : -1;
-  if (strength <= currentStrength) {
+  const floor = currentHighestValue ?? config.minimumBid - 1;
+  if (v <= floor) {
     return { valid: false, code: 'BID_TOO_LOW', reason: 'bid does not exceed the current highest bid' };
   }
 
   return { valid: true };
 }
 
-/** Resolves the target trick count implied by a winning (non-pass) bid. */
-export function targetForBid(bid: Bid, config: MatchConfig): number {
-  switch (bid.type) {
-    case 'gizli':
-      return config.maxBid;
-    case 'elsiz':
-      return 0;
-    case 'koz':
-      return bid.value ?? 0;
-    default:
-      return 0;
+/**
+ * Koz Maça taahhütlü commitment validation (§8 Mod B / §9): each player
+ * independently names a personal trick target - no comparison against
+ * other players is involved, just the variant's min/max range.
+ */
+export function validateCommitment(value: number | undefined, config: MatchConfig): BidValidationResult {
+  if (value === undefined || !Number.isInteger(value)) {
+    return { valid: false, code: 'INVALID_BID', reason: 'value must be an integer' };
   }
+  if (value < config.minimumBid) {
+    return { valid: false, code: 'BID_TOO_LOW', reason: `value must be at least ${config.minimumBid}` };
+  }
+  if (value > config.maximumBid) {
+    return { valid: false, code: 'BID_TOO_HIGH', reason: `value must be at most ${config.maximumBid}` };
+  }
+  return { valid: true };
 }

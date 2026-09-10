@@ -1,113 +1,69 @@
-import { Contract, MatchConfig, PLAYER_INDICES, PlayerIndex, partnerOf, teamOf } from './types.js';
+import { Contract, MatchConfig, PLAYER_INDICES, PlayerIndex } from './types.js';
 
 /**
- * Computes each player's score delta for one completed hand.
- * Dispatches to solo or partnership scoring based on config.partnership.
+ * Points for one target/taken pair under the table's `scoreMode` (§19 - a
+ * direct port of the document's three named modes):
+ *  - TakenMinusBidOnFail : made -> +taken tricks; failed -> -target
+ *  - BidOnly              : made -> +target (overtricks ignored); failed -> -target
+ *  - Multiplier10         : made -> target*10 + overtricks; failed -> -(target*10)
  */
-export function scoreHand(
-  contract: Contract,
-  tricksWon: Record<PlayerIndex, number>,
-  config: MatchConfig
-): Record<PlayerIndex, number> {
-  return config.partnership
-    ? scoreHandPartnership(contract, tricksWon, config)
-    : scoreHandSolo(contract, tricksWon, config);
-}
-
-/**
- * Score for the declaring side (player or team) against their contract.
- * 'elsiz' (0-trick) contracts always use the dedicated flat elsizPoints,
- * since a taken-tricks/bid-based formula is meaningless when the target
- * is zero. Everything else follows config.scoringMode / config.penaltyMode.
- */
-function contractPoints(
-  type: Contract['type'],
-  target: number,
-  tricksTakenByContractSide: number,
-  config: MatchConfig
-): number {
-  if (type === 'elsiz') {
-    return (tricksTakenByContractSide === 0 ? 1 : -1) * config.elsizPoints;
-  }
-
-  const made = tricksTakenByContractSide >= target;
+function contractPoints(target: number, taken: number, config: MatchConfig): number {
+  const made = taken >= target;
   if (made) {
-    switch (config.scoringMode) {
-      case 'bidOnly':
+    switch (config.scoreMode) {
+      case 'BidOnly':
         return target;
-      case 'bidPlusOvertricks':
-        return target + (tricksTakenByContractSide - target) * config.overtrickPoints;
-      case 'takenTricks':
+      case 'Multiplier10':
+        return target * 10 + (taken - target);
+      case 'TakenMinusBidOnFail':
       default:
-        return tricksTakenByContractSide;
+        return taken;
     }
   }
-
-  switch (config.penaltyMode) {
-    case 'negativeTaken':
-      return -(target - tricksTakenByContractSide);
-    case 'fixedPenalty':
-      return -config.fixedPenaltyPoints;
-    case 'negativeBid':
+  switch (config.scoreMode) {
+    case 'Multiplier10':
+      return -(target * 10);
+    case 'BidOnly':
+    case 'TakenMinusBidOnFail':
     default:
       return -target;
   }
 }
 
 /**
- * Solo scoring: the declarer alone is judged against the contract; every
- * other player simply banks `pointsPerTrick` for each trick they personally
- * won. (The source spec only defines declarer scoring - the non-declarer
- * per-trick bonus is our own tunable addition.)
+ * Computes each player's score delta for one completed hand.
+ *
+ * Team variants (§6, §9): both teammates always receive the same delta,
+ * judged against their team's target (if any) rather than either player's
+ * individual trick count. Solo variants judge each player against their own
+ * target. A player/team with no target for this hand (the non-declaring
+ * side in an auction variant, or Koz Maça Mod A with no bidding at all)
+ * simply banks their tricks taken 1-for-1 - there is no batma risk without
+ * a target to fall short of.
  */
-function scoreHandSolo(
+export function scoreHand(
   contract: Contract,
   tricksWon: Record<PlayerIndex, number>,
   config: MatchConfig
 ): Record<PlayerIndex, number> {
   const delta: Record<PlayerIndex, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
 
-  for (const p of PLAYER_INDICES) {
-    if (p === contract.declarer) continue;
-    delta[p] = tricksWon[p] * config.pointsPerTrick;
+  if (config.isTeamGame) {
+    const teamSeats: Record<0 | 1, [PlayerIndex, PlayerIndex]> = { 0: [0, 2], 1: [1, 3] };
+    for (const team of [0, 1] as const) {
+      const [a, b] = teamSeats[team];
+      const teamTricks = tricksWon[a] + tricksWon[b];
+      const target = contract.teamTargets[team];
+      const pts = target !== undefined ? contractPoints(target, teamTricks, config) : teamTricks;
+      delta[a] = pts;
+      delta[b] = pts;
+    }
+    return delta;
   }
 
-  delta[contract.declarer] = contractPoints(
-    contract.type,
-    contract.target,
-    tricksWon[contract.declarer],
-    config
-  );
-
-  return delta;
-}
-
-/**
- * Partnership ("eşli") scoring: the declarer bids on behalf of their whole
- * team. The declarer + their partner's combined tricks are judged against
- * the contract, and both teammates receive the same delta. The opposing
- * team banks `pointsPerTrick` for their combined tricks, split equally
- * (i.e. both opponents get the same delta too).
- */
-function scoreHandPartnership(
-  contract: Contract,
-  tricksWon: Record<PlayerIndex, number>,
-  config: MatchConfig
-): Record<PlayerIndex, number> {
-  const delta: Record<PlayerIndex, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
-
-  const declarer = contract.declarer;
-  const partner = partnerOf(declarer);
-  const declarerTeamTricks = tricksWon[declarer] + tricksWon[partner];
-
-  const opponents = PLAYER_INDICES.filter((p) => teamOf(p) !== teamOf(declarer));
-  const opponentTricks = opponents.reduce((sum: number, p) => sum + tricksWon[p], 0);
-  const opponentPoints = opponentTricks * config.pointsPerTrick;
-  for (const p of opponents) delta[p] = opponentPoints;
-
-  const declarerTeamPoints = contractPoints(contract.type, contract.target, declarerTeamTricks, config);
-  delta[declarer] = declarerTeamPoints;
-  delta[partner] = declarerTeamPoints;
-
+  for (const p of PLAYER_INDICES) {
+    const target = contract.targets[p];
+    delta[p] = target !== undefined ? contractPoints(target, tricksWon[p], config) : tricksWon[p];
+  }
   return delta;
 }

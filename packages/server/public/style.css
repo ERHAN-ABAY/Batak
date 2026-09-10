@@ -228,8 +228,7 @@ button:disabled { background: #444; color: #999; cursor: not-allowed; transform:
 .panel h3 { margin-top: 0; }
 .panel .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
 .panel .hint { font-size: 12px; opacity: 0.7; margin: 2px 0 8px; }
-
-#open-hand-panel .mini-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.panel .mini-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
 
 /* ---------- Cards ---------- */
 #hand {

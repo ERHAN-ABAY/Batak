@@ -117,25 +117,12 @@ function cardBackEl() {
   return el('div', 'card-back');
 }
 
-// ---------- Legal-play check (mirrors engine's configurable follow-suit / must-beat rules) ----------
-function legalPlays(hand, trick, trumpSuit, rules) {
-  const mustTrumpWhenVoid = rules ? rules.mustTrumpWhenVoid : true;
-  const mustOvertrumpOrBeat = rules ? rules.mustOvertrumpOrBeat : true;
+// ---------- Legal-play check (mirrors engine's follow-suit rule, §15) ----------
+function legalPlays(hand, trick) {
   if (trick.length === 0) return hand;
   const ledSuit = trick[0].card.suit;
   const cardsOfLedSuit = hand.filter((c) => c.suit === ledSuit);
-  const trumpCards = trumpSuit ? hand.filter((c) => c.suit === trumpSuit) : [];
-  const eligible =
-    cardsOfLedSuit.length > 0 ? cardsOfLedSuit : mustTrumpWhenVoid && trumpCards.length > 0 ? trumpCards : hand;
-
-  if (!mustOvertrumpOrBeat) return eligible;
-
-  const trumpsPlayed = trumpSuit ? trick.filter((tc) => tc.card.suit === trumpSuit) : [];
-  const pool = trumpsPlayed.length > 0 ? trumpsPlayed : trick.filter((tc) => tc.card.suit === ledSuit);
-  const currentBest = pool.reduce((best, tc) => (tc.card.rank > best.card.rank ? tc : best), pool[0]).card;
-
-  const beating = eligible.filter((c) => c.suit === currentBest.suit && c.rank > currentBest.rank);
-  return beating.length > 0 ? beating : eligible;
+  return cardsOfLedSuit.length > 0 ? cardsOfLedSuit : hand;
 }
 
 // ---------- Team helpers ----------
@@ -146,26 +133,53 @@ function teamClass(seat) {
   return teamOf(seat) === 0 ? 'teamA' : 'teamB';
 }
 
-function modeBadges(modes) {
+// ---------- Variant metadata ----------
+const VARIANT_LABELS = {
+  NORMAL_BID: 'İhaleli Batak',
+  OPEN_BID: 'Açık İhale',
+  TEAM_BID: 'Eşli İhaleli Batak',
+  TEAM_OPEN_BID: 'Eşli Açık İhale',
+  SPADES: 'Koz Maça',
+  TEAM_SPADES: 'Eşli Koz Maça',
+  BURIED_BID: 'Gömmeli Batak',
+};
+const VARIANT_HINTS = {
+  NORMAL_BID: 'Bireysel ihale, minimum 5. İhaleyi alan koz seçer ve o el sayısını almalıdır.',
+  OPEN_BID: 'Bireysel ihale, minimum 5. İhaleyi alan koz seçtiği anda karşısındaki oyuncunun eli herkese açık gösterilir.',
+  TEAM_BID: 'Karşılıklı oturan 2 oyuncu bir takımdır (0-2 ve 1-3). Minimum ihale 8; alınan eller takım toplamına yazılır.',
+  TEAM_OPEN_BID: 'Eşli İhale + koz seçildiği anda ihaleyi alan oyuncunun ortağının eli herkese açık gösterilir.',
+  SPADES: 'Koz her zaman ♠. "Taahhütlü" açıksa her oyuncu kendi el sayısını söyler; kapalıysa ihalesiz oynanır.',
+  TEAM_SPADES: 'Eşli + koz her zaman ♠. Takım hedefi bireysel taahhütlerin toplamı ya da doğrudan takım taahhüdü olabilir.',
+  BURIED_BID: 'İhaleyi alan oyuncu kenara ayrılan kartları alır ve elinden aynı sayıda kart gömer.',
+};
+const isTeamVariant = (id) => id === 'TEAM_BID' || id === 'TEAM_OPEN_BID' || id === 'TEAM_SPADES';
+const isSpadesVariant = (id) => id === 'SPADES' || id === 'TEAM_SPADES';
+
+function ruleBadges(ruleSet) {
   const frag = document.createDocumentFragment();
-  if (!modes) return frag;
-  if (modes.partnership) frag.appendChild(el('span', 'badge', 'Eşli'));
-  if (modes.openHand) frag.appendChild(el('span', 'badge', 'Açık'));
-  if (modes.fixedSpadesTrump) frag.appendChild(el('span', 'badge', 'Maça'));
-  if (modes.buriedCards) frag.appendChild(el('span', 'badge', 'Gömmeli'));
-  if (!modes.partnership && !modes.fixedSpadesTrump && !modes.buriedCards) {
-    frag.appendChild(el('span', 'badge', 'Klasik / İhaleli'));
-  }
+  frag.appendChild(el('span', 'badge', VARIANT_LABELS[ruleSet.variantId] || ruleSet.variantId));
+  if (ruleSet.isOpenBidding) frag.appendChild(el('span', 'badge', 'Açık El'));
+  if (ruleSet.biddingStyle === 'commitment') frag.appendChild(el('span', 'badge', 'Taahhütlü'));
+  if (ruleSet.biddingStyle === 'none') frag.appendChild(el('span', 'badge', 'İhalesiz'));
+  if (ruleSet.teamBidMode === 'directTeam' && ruleSet.isTeamGame) frag.appendChild(el('span', 'badge', 'Takım Taahhüdü'));
   return frag;
 }
 
-// ---------- Mode checkboxes ----------
-const partnershipCk = $('#modePartnership');
-const openHandCk = $('#modeOpenHand');
-partnershipCk.addEventListener('change', () => {
-  openHandCk.disabled = !partnershipCk.checked;
-  if (!partnershipCk.checked) openHandCk.checked = false;
-});
+// ---------- Variant selector / dynamic form fields ----------
+const variantSelect = $('#variantSelect');
+const spadesBiddingToggle = $('#spadesBiddingToggle');
+const teamBidModeToggle = $('#teamBidModeToggle');
+const buriedCountField = $('#buriedCountField');
+
+function refreshCreateFormVisibility() {
+  const variantId = variantSelect.value;
+  $('#variantHint').textContent = VARIANT_HINTS[variantId] || '';
+  spadesBiddingToggle.classList.toggle('hidden', !isSpadesVariant(variantId));
+  teamBidModeToggle.classList.toggle('hidden', variantId !== 'TEAM_SPADES');
+  buriedCountField.classList.toggle('hidden', variantId !== 'BURIED_BID');
+}
+variantSelect.addEventListener('change', refreshCreateFormVisibility);
+refreshCreateFormVisibility();
 
 // ---------- Lobby ----------
 function refreshLobby() {
@@ -182,7 +196,7 @@ function refreshLobby() {
       top.textContent = `${t.name} [${t.id}] - ${t.seatedCount}/4`;
       li.appendChild(top);
       const badgeRow = el('div', 'badges');
-      badgeRow.appendChild(modeBadges(t.modes));
+      badgeRow.appendChild(el('span', 'badge', VARIANT_LABELS[t.variantId] || t.variantId));
       li.appendChild(badgeRow);
       const btn = el('button', null, 'Katıl');
       btn.addEventListener('click', () => joinTable(t.id));
@@ -228,24 +242,25 @@ function joinTable(tableId) {
 
 $('#createTableBtn').addEventListener('click', () => {
   const tableName = $('#tableNameInput').value.trim();
+  const numOrUndef = (v) => (v === '' || v === null ? undefined : Number(v));
   socket.emit(
     'table:create',
     {
       playerId,
       name: currentName(),
       tableName,
-      partnership: partnershipCk.checked,
-      openHand: openHandCk.checked,
-      fixedSpadesTrump: $('#modeMaca').checked,
-      strictTrumpRules: $('#modeStrictTrump').checked,
-      buriedCards: $('#modeBuried').checked,
+      variantId: variantSelect.value,
       allowSpectators: $('#modeSpectators').checked,
-      scoringMode: $('#ruleScoringMode').value,
-      penaltyMode: $('#rulePenaltyMode').value,
+      spadesBiddingEnabled: $('#modeSpadesBidding').checked,
+      teamBidMode: $('#modeDirectTeamBid').checked ? 'directTeam' : 'individualSum',
+      minimumBid: numOrUndef($('#ruleMinBid').value),
+      maximumBid: numOrUndef($('#ruleMaxBid').value),
+      buriedCardCount: Number($('#ruleBuriedCount').value) || undefined,
+      scoreMode: $('#ruleScoreMode').value,
+      allPassAction: $('#ruleAllPassAction').value,
       gameEndMode: $('#ruleGameEndMode').value,
       targetScore: Number($('#ruleTargetScore').value) || undefined,
-      handsPerMatch: Number($('#ruleHandsPerMatch').value) || undefined,
-      minBid: Number($('#ruleMinBid').value) || undefined,
+      maxRounds: Number($('#ruleMaxRounds').value) || undefined,
     },
     (res) => {
       if (res.error) return showToast(res.error);
@@ -275,13 +290,21 @@ function renderWaiting(state) {
   showScreen('waiting');
   $('#waitTableId').textContent = state.tableId;
   $('#waitModeBadges').innerHTML = '';
-  $('#waitModeBadges').appendChild(modeBadges(state.modes));
+  const badges = $('#waitModeBadges');
+  badges.appendChild(el('span', 'badge', VARIANT_LABELS[state.rules.variantId] || state.rules.variantId));
+  if (isSpadesVariant(state.rules.variantId) && state.rules.spadesBiddingEnabled === false) {
+    badges.appendChild(el('span', 'badge', 'İhalesiz'));
+  }
+  if (state.rules.variantId === 'TEAM_SPADES' && state.rules.teamBidMode === 'directTeam') {
+    badges.appendChild(el('span', 'badge', 'Takım Taahhüdü'));
+  }
 
   const ul = $('#seatList');
   ul.innerHTML = '';
+  const isTeam = isTeamVariant(state.rules.variantId);
   state.seats.forEach((seat, i) => {
     const li = el('li');
-    if (state.modes && state.modes.partnership) li.classList.add(teamClass(i));
+    if (isTeam) li.classList.add(teamClass(i));
     if (!seat) {
       li.className += ' empty';
       li.textContent = `Koltuk ${i + 1}: boş`;
@@ -310,17 +333,27 @@ function renderWaiting(state) {
 }
 
 // ---------- Rendering the game screen ----------
-const CONTRACT_LABEL = { koz: 'Koz', gizli: 'Gizli', elsiz: 'Elsiz' };
-
 function relPos(seatIndex, mySeat) {
   const base = mySeat === null ? 0 : mySeat;
   const diff = (seatIndex - base + 4) % 4;
   return ['bottom', 'left', 'top', 'right'][diff];
 }
 
+/** The trick target this seat is playing for right now, or null if it has none this hand. */
+function targetFor(state, seat) {
+  const contract = state.game.contract;
+  if (!contract) return null;
+  if (state.game.ruleSet.isTeamGame) {
+    const t = contract.teamTargets[teamOf(seat)];
+    return t === undefined ? null : t;
+  }
+  const t = contract.targets[seat];
+  return t === undefined ? null : t;
+}
+
 function renderScoreboard(state) {
   $('#modeBadges').innerHTML = '';
-  $('#modeBadges').appendChild(modeBadges(state.game.settings));
+  $('#modeBadges').appendChild(ruleBadges(state.game.ruleSet));
   if (state.isSpectator) $('#modeBadges').appendChild(el('span', 'badge', '👁 Seyirci'));
 
   const header = $('#scoreboard');
@@ -328,12 +361,12 @@ function renderScoreboard(state) {
   const progressLabel =
     state.game.gameEndMode === 'targetScore'
       ? `El ${state.game.handNumber} · Hedef ${state.game.targetScore}`
-      : `El ${state.game.handNumber}/${state.game.handsPerMatch}`;
+      : `El ${state.game.handNumber}/${state.game.maxRounds}`;
   header.appendChild(el('div', 'score-chip', progressLabel));
   for (let i = 0; i < 4; i++) {
     const p = state.game.players[i];
     let cls = 'score-chip' + (i === state.mySeat ? ' me' : '') + (state.game.turn === i ? ' turn' : '');
-    if (state.game.settings.partnership) cls += ' ' + teamClass(i);
+    if (state.game.ruleSet.isTeamGame) cls += ' ' + teamClass(i);
     const chip = el('div', cls);
     chip.appendChild(el('span', 'name', p.name || '(boş)'));
     chip.appendChild(el('span', 'pts', String(p.score)));
@@ -349,19 +382,26 @@ function renderTrumpBadge(state) {
     return;
   }
   badge.classList.remove('hidden');
-  const declarerName = state.game.players[contract.declarer]?.name ?? '';
-  const contractLabel = CONTRACT_LABEL[contract.type] || contract.type;
   badge.innerHTML = '';
-  if (contract.trumpSuit) {
-    badge.classList.remove('pending');
-    badge.appendChild(document.createTextNode('Koz: '));
-    badge.appendChild(
-      el('span', 'suit' + (RED_SUITS.has(contract.trumpSuit) ? ' red' : ''), SUIT_SYMBOL[contract.trumpSuit])
-    );
-    badge.appendChild(document.createTextNode(` — ${declarerName}: ${contractLabel} ${contract.target}`));
-  } else {
+  if (!contract.trumpSuit) {
     badge.classList.add('pending');
+    const declarerName = contract.declarer !== null ? state.game.players[contract.declarer]?.name ?? '' : '';
     badge.textContent = `Koz seçiliyor... (${declarerName})`;
+    return;
+  }
+
+  badge.classList.remove('pending');
+  badge.appendChild(document.createTextNode('Koz: '));
+  badge.appendChild(
+    el('span', 'suit' + (RED_SUITS.has(contract.trumpSuit) ? ' red' : ''), SUIT_SYMBOL[contract.trumpSuit])
+  );
+
+  if (contract.declarer !== null) {
+    const declarerName = state.game.players[contract.declarer]?.name ?? '';
+    const target = targetFor(state, contract.declarer);
+    badge.appendChild(document.createTextNode(` — ${declarerName}: ${target} el`));
+  } else if (state.game.ruleSet.biddingStyle === 'commitment') {
+    badge.appendChild(document.createTextNode(' — herkes kendi elini oynuyor'));
   }
 }
 
@@ -377,12 +417,18 @@ function renderSeats(state) {
     let cls = 'seat-pos';
     if (state.game.turn === i) cls += ' turn';
     if (state.game.contract && state.game.contract.declarer === i) cls += ' declarer';
-    if (state.game.players[i].hasPassed && state.game.phase === 'BIDDING') cls += ' passed';
+    const stillBidding = state.game.phase === 'BIDDING';
+    if (stillBidding && (p.hasPassed || p.hasCommitted)) cls += ' passed';
     container.className = cls;
 
     const nameEl = el('div', 'seat-name', p.name || '(boş)');
     container.appendChild(nameEl);
     if (state.seats[i] && state.seats[i].isBot) container.appendChild(el('div', 'bot-tag', '🤖 bot'));
+
+    const target = state.game.contract ? targetFor(state, i) : null;
+    if (target !== null && state.game.phase === 'PLAYING') {
+      container.appendChild(el('div', 'bot-tag', `Hedef: ${target}`));
+    }
 
     if (i !== state.mySeat) {
       const mini = el('div', 'mini-hand');
@@ -417,22 +463,36 @@ function renderTrick(state) {
   lastTrickSignature = sig;
 
   const contract = state.game.contract;
+  const ruleSet = state.game.ruleSet;
   let status = '';
   if (state.game.phase === 'BIDDING') {
-    status = state.game.turn === state.mySeat ? 'Sıra sende: teklif ver' : `Sıra: ${state.game.players[state.game.turn]?.name ?? ''}`;
+    const verb = ruleSet.biddingStyle === 'commitment' ? 'kaç el alacağını söyle' : 'teklif ver';
+    status =
+      state.game.turn === state.mySeat
+        ? `Sıra sende: ${verb}`
+        : `Sıra: ${state.game.players[state.game.turn]?.name ?? ''}`;
+    if (ruleSet.biddingStyle === 'auction' && state.game.highestBid) {
+      const hb = state.game.highestBid;
+      status += ` — en yüksek teklif: ${hb.value} (${state.game.players[hb.player]?.name ?? ''})`;
+    }
   } else if (state.game.phase === 'EXCHANGE') {
     status = `${state.game.players[contract.declarer].name} gömülen kartları değerlendiriyor...`;
   } else if (state.game.phase === 'CHOOSING_TRUMP') {
     status = `${state.game.players[contract.declarer].name} koz seçiyor...`;
   } else if (state.game.phase === 'PLAYING') {
-    const c = contract;
-    const contractDesc = `${state.game.players[c.declarer].name}: ${CONTRACT_LABEL[c.type]} ${c.target}${c.trumpSuit ? ' (' + SUIT_SYMBOL[c.trumpSuit] + ')' : ''}`;
+    let contractDesc;
+    if (contract.declarer !== null) {
+      const target = targetFor(state, contract.declarer);
+      contractDesc = `${state.game.players[contract.declarer].name}: ${target} el${contract.trumpSuit ? ' (' + SUIT_SYMBOL[contract.trumpSuit] + ')' : ''}`;
+    } else {
+      contractDesc = `Koz: ${contract.trumpSuit ? SUIT_SYMBOL[contract.trumpSuit] : '-'}`;
+    }
     status = `${contractDesc} — Sıra: ${state.game.players[state.game.turn]?.name ?? ''}`;
   } else if (state.game.phase === 'HAND_COMPLETE') {
     status = 'El tamamlandı.';
   } else if (state.game.phase === 'MATCH_COMPLETE') {
     const winner = state.game.matchWinner;
-    const winnerLabel = state.game.settings.partnership
+    const winnerLabel = ruleSet.isTeamGame
       ? `Takım ${teamOf(winner) === 0 ? 'A (0-2)' : 'B (1-3)'}`
       : state.game.players[winner].name;
     status = `Oyun bitti! Kazanan: ${winnerLabel}`;
@@ -459,7 +519,7 @@ function renderExchangePanel(state) {
   panel.classList.toggle('hidden', !myTurn);
   if (!myTurn) return;
 
-  const need = state.game.settings.buriedCardCount;
+  const need = state.game.ruleSet.buriedCardCount;
   panel.innerHTML = '';
   panel.appendChild(el('h3', null, `Göm: ${need} kart seç ve at`));
   panel.appendChild(el('p', 'hint', `Kenara ayrılan kartlar eline eklendi. Şimdi tam ${need} kart seçip gömmelisin.`));
@@ -500,36 +560,36 @@ function renderBidPanel(state) {
   panel.classList.toggle('hidden', !myTurn);
   if (!myTurn) return;
 
-  const maca = state.game.settings.fixedSpadesTrump;
+  const ruleSet = state.game.ruleSet;
+  const isCommitment = ruleSet.biddingStyle === 'commitment';
 
   panel.innerHTML = '';
-  panel.appendChild(el('h3', null, 'Teklif Ver'));
-  if (maca) panel.appendChild(el('div', 'hint', 'Bu masada koz her zaman ♠ Maça.'));
+  panel.appendChild(el('h3', null, isCommitment ? 'Kaç El Alacaksın?' : 'Teklif Ver'));
+  if (ruleSet.fixedTrump) panel.appendChild(el('div', 'hint', `Bu masada koz her zaman ${SUIT_SYMBOL[ruleSet.fixedTrump]}.`));
 
   const row = el('div', 'row');
   const select = document.createElement('select');
-  for (let v = 5; v <= 13; v++) select.appendChild(new Option(String(v), String(v)));
+  for (let v = ruleSet.minimumBid; v <= ruleSet.maximumBid; v++) select.appendChild(new Option(String(v), String(v)));
   row.appendChild(select);
 
-  const bidBtn = (label, build) => {
-    const b = el('button', null, label);
-    b.addEventListener('click', () => {
-      sounds.bid();
-      socket.emit('bid:submit', { tableId: currentTableId, bid: build() });
-    });
-    return b;
-  };
-
-  row.appendChild(bidBtn(maca ? 'Teklif Ver' : 'Koz', () => ({ type: 'koz', value: Number(select.value) })));
+  const submitBtn = el('button', null, isCommitment ? 'Söyle' : 'Teklif Et');
+  submitBtn.addEventListener('click', () => {
+    sounds.bid();
+    socket.emit('bid:submit', { tableId: currentTableId, bid: { type: 'bid', value: Number(select.value) } });
+  });
+  row.appendChild(submitBtn);
   panel.appendChild(row);
 
-  const row2 = el('div', 'row');
-  if (!maca) {
-    row2.appendChild(bidBtn('Gizli (tüm el, koz sonra seçilir)', () => ({ type: 'gizli' })));
-    row2.appendChild(bidBtn('Elsiz (0 el)', () => ({ type: 'elsiz' })));
+  if (!isCommitment) {
+    const passRow = el('div', 'row');
+    const passBtn = el('button', null, 'Pas');
+    passBtn.addEventListener('click', () => {
+      sounds.bid();
+      socket.emit('bid:submit', { tableId: currentTableId, bid: { type: 'pas' } });
+    });
+    passRow.appendChild(passBtn);
+    panel.appendChild(passRow);
   }
-  row2.appendChild(bidBtn('Pas', () => ({ type: 'pas' })));
-  panel.appendChild(row2);
 }
 
 function renderTrumpPanel(state) {
@@ -558,13 +618,12 @@ function renderHandCompletePanel(state) {
   const r = state.game.lastHandResult;
   if (r) {
     const c = r.contract;
-    panel.appendChild(
-      el(
-        'p',
-        null,
-        `${state.game.players[c.declarer].name} - ${CONTRACT_LABEL[c.type]} ${c.target}: ${r.tricksWon[c.declarer]} el aldı.`
-      )
-    );
+    if (c.declarer !== null) {
+      const target = state.game.ruleSet.isTeamGame ? c.teamTargets[teamOf(c.declarer)] : c.targets[c.declarer];
+      panel.appendChild(
+        el('p', null, `${state.game.players[c.declarer].name} - ${target} el: ${r.tricksWon[c.declarer]} el aldı.`)
+      );
+    }
     for (let i = 0; i < 4; i++) {
       panel.appendChild(el('p', null, `${state.game.players[i].name}: ${r.scoreDelta[i] >= 0 ? '+' : ''}${r.scoreDelta[i]} puan`));
     }
@@ -583,7 +642,7 @@ function renderMatchCompletePanel(state) {
   if (!show) return;
   panel.innerHTML = '';
   const winner = state.game.matchWinner;
-  const winnerLabel = state.game.settings.partnership
+  const winnerLabel = state.game.ruleSet.isTeamGame
     ? `Takım ${teamOf(winner) === 0 ? 'A (0-2)' : 'B (1-3)'}`
     : state.game.players[winner].name;
   panel.appendChild(el('h3', null, `Kazanan: ${winnerLabel}`));
@@ -594,9 +653,7 @@ function renderHand(state) {
   container.innerHTML = '';
   if (state.game.phase === 'EXCHANGE') return; // exchange panel handles card selection instead
   const isPlayingTurn = state.game.phase === 'PLAYING' && state.game.turn === state.mySeat;
-  const legal = isPlayingTurn
-    ? legalPlays(state.game.hand, state.game.currentTrick, state.game.contract?.trumpSuit ?? null, state.game.settings)
-    : [];
+  const legal = isPlayingTurn ? legalPlays(state.game.hand, state.game.currentTrick) : [];
   for (const card of state.game.hand) {
     const isLegal = legal.some((c) => c.suit === card.suit && c.rank === card.rank);
     const disabled = !isPlayingTurn || !isLegal;

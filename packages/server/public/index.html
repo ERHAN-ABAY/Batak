@@ -19,26 +19,27 @@
         <h2>Yeni Masa Kur</h2>
         <input id="tableNameInput" type="text" maxlength="24" placeholder="Masa adı (opsiyonel)" />
 
+        <label>Oyun Tipi
+          <select id="variantSelect">
+            <option value="NORMAL_BID">İhaleli Batak — bireysel, min. 5</option>
+            <option value="OPEN_BID">Açık İhale — koz seçilince karşı el açılır</option>
+            <option value="TEAM_BID">Eşli İhaleli Batak — 2v2 takım, min. 8</option>
+            <option value="TEAM_OPEN_BID">Eşli Açık İhale — 2v2 takım, koz seçilince ortağın eli açılır</option>
+            <option value="SPADES">Koz Maça — koz her zaman ♠</option>
+            <option value="TEAM_SPADES">Eşli Koz Maça — 2v2 takım, koz her zaman ♠</option>
+            <option value="BURIED_BID">Gömmeli Batak — 4 kart kenara ayrılır</option>
+          </select>
+        </label>
+        <p id="variantHint" class="hint"></p>
+
         <div class="mode-toggles">
-          <label class="toggle">
-            <input id="modePartnership" type="checkbox" />
-            <span><strong>Eşli</strong> — 2v2 takım (0-2 ve 1-3 koltukları)</span>
+          <label class="toggle" id="spadesBiddingToggle">
+            <input id="modeSpadesBidding" type="checkbox" checked />
+            <span><strong>Taahhütlü</strong> — her oyuncu kendi el sayısını söyler (kapalıysa ihalesiz oynanır)</span>
           </label>
-          <label class="toggle sub">
-            <input id="modeOpenHand" type="checkbox" disabled />
-            <span><strong>Açık</strong> — ihale biten anda ortağın eli herkese açılır</span>
-          </label>
-          <label class="toggle">
-            <input id="modeMaca" type="checkbox" />
-            <span><strong>Maça</strong> — koz her zaman ♠, gizli/elsiz kapalı</span>
-          </label>
-          <label class="toggle">
-            <input id="modeStrictTrump" type="checkbox" checked />
-            <span><strong>Zorunlu Kesme/Basma</strong> — renk yoksa koz zorunlu, üstüne basabiliyorsan basmak zorunlu</span>
-          </label>
-          <label class="toggle">
-            <input id="modeBuried" type="checkbox" />
-            <span><strong>Gömmeli</strong> — 4 kart kenara ayrılır, ihaleyi alan bunu görüp elinden 4 kart gömer</span>
+          <label class="toggle" id="teamBidModeToggle">
+            <input id="modeDirectTeamBid" type="checkbox" />
+            <span><strong>Takım doğrudan taahhüdü</strong> — takım tek sayı söyler (kapalıysa bireysel taahhütler toplanır)</span>
           </label>
           <label class="toggle">
             <input id="modeSpectators" type="checkbox" checked />
@@ -47,24 +48,29 @@
         </div>
 
         <details class="rules-details">
-          <summary>Puanlama ve bitiş ayarları</summary>
+          <summary>İhale ve puanlama ayarları</summary>
           <div class="rules-grid">
-            <label>Puanlama
-              <select id="ruleScoringMode">
-                <option value="takenTricks">Alınan el kadar</option>
-                <option value="bidOnly">Sadece ihale kadar</option>
-                <option value="bidPlusOvertricks">İhale + fazla el</option>
-              </select>
-            </label>
-            <label>Batak cezası
-              <select id="rulePenaltyMode">
-                <option value="negativeBid">İhale kadar eksi</option>
-                <option value="negativeTaken">Eksik el kadar</option>
-                <option value="fixedPenalty">Sabit ceza</option>
-              </select>
-            </label>
             <label>Minimum ihale
-              <input id="ruleMinBid" type="number" min="1" max="13" value="5" />
+              <input id="ruleMinBid" type="number" min="1" max="13" placeholder="varyant varsayılanı" />
+            </label>
+            <label>Maksimum ihale
+              <input id="ruleMaxBid" type="number" min="1" max="13" placeholder="varyant varsayılanı" />
+            </label>
+            <label id="buriedCountField">Gömülecek kart sayısı
+              <input id="ruleBuriedCount" type="number" min="4" max="16" step="4" value="4" />
+            </label>
+            <label>Puanlama
+              <select id="ruleScoreMode">
+                <option value="TakenMinusBidOnFail">Alınan el kadar (batarsa -ihale)</option>
+                <option value="BidOnly">Sadece ihale kadar</option>
+                <option value="Multiplier10">İhale x10 + fazla el</option>
+              </select>
+            </label>
+            <label>Herkes pas geçerse
+              <select id="ruleAllPassAction">
+                <option value="dealerTakesMinimum">Dağıtıcı minimumu alır</option>
+                <option value="redeal">Yeniden dağıt</option>
+              </select>
             </label>
             <label>Oyun bitişi
               <select id="ruleGameEndMode">
@@ -76,7 +82,7 @@
               <input id="ruleTargetScore" type="number" min="20" max="2000" value="101" />
             </label>
             <label>El sayısı (sabit modda)
-              <input id="ruleHandsPerMatch" type="number" min="1" max="100" value="8" />
+              <input id="ruleMaxRounds" type="number" min="1" max="100" value="8" />
             </label>
           </div>
         </details>

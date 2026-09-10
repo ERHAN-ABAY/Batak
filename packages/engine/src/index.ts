@@ -1,6 +1,7 @@
 export * from './types.js';
 export * from './errors.js';
 export * from './deck.js';
+export * from './ruleSets.js';
 export * from './bidding.js';
 export * from './trick.js';
 export * from './scoring.js';

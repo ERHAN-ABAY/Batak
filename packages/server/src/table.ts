@@ -1,5 +1,15 @@
 import { randomBytes } from 'node:crypto';
-import { Game, GameEndMode, MatchConfig, PenaltyMode, PlayerIndex, ScoringMode } from '@batak/engine';
+import {
+  AllPassAction,
+  createMatchConfig,
+  Game,
+  GameEndMode,
+  MatchConfigOverrides,
+  PlayerIndex,
+  ScoreMode,
+  TeamBidMode,
+  VariantId,
+} from '@batak/engine';
 
 export interface Seat {
   playerId: string;
@@ -19,22 +29,19 @@ export interface Spectator {
   reconnectToken: string;
 }
 
-export interface TableModes {
-  partnership: boolean;
-  openHand: boolean;
-  fixedSpadesTrump: boolean;
-  strictTrumpRules: boolean;
-  buriedCards: boolean;
-  allowSpectators: boolean;
-}
-
 export interface TableRules {
-  scoringMode: ScoringMode;
-  penaltyMode: PenaltyMode;
-  gameEndMode: GameEndMode;
-  targetScore: number;
-  handsPerMatch: number;
-  minBid: number;
+  variantId: VariantId;
+  allowSpectators: boolean;
+  minimumBid?: number;
+  maximumBid?: number;
+  scoreMode?: ScoreMode;
+  gameEndMode?: GameEndMode;
+  targetScore?: number;
+  maxRounds?: number;
+  allPassAction?: AllPassAction;
+  buriedCardCount?: number;
+  spadesBiddingEnabled?: boolean;
+  teamBidMode?: TeamBidMode;
 }
 
 const SEAT_INDICES: PlayerIndex[] = [0, 1, 2, 3];
@@ -52,7 +59,6 @@ function genBotPlayerId(): string {
 export class Table {
   readonly id: string;
   readonly name: string;
-  readonly modes: TableModes;
   readonly rules: TableRules;
   seats: (Seat | null)[] = [null, null, null, null];
   spectators: Spectator[] = [];
@@ -61,24 +67,22 @@ export class Table {
   createdAt = Date.now();
   chatHistory: { name: string; text: string; ts: number }[] = [];
 
-  constructor(id: string, name: string, modes: Partial<TableModes> = {}, rules: Partial<TableRules> = {}) {
+  constructor(id: string, name: string, rules: Partial<TableRules> = {}) {
     this.id = id;
     this.name = name;
-    this.modes = {
-      partnership: !!modes.partnership,
-      openHand: !!modes.partnership && !!modes.openHand,
-      fixedSpadesTrump: !!modes.fixedSpadesTrump,
-      strictTrumpRules: modes.strictTrumpRules ?? true,
-      buriedCards: !!modes.buriedCards,
-      allowSpectators: modes.allowSpectators ?? true,
-    };
     this.rules = {
-      scoringMode: rules.scoringMode ?? 'takenTricks',
-      penaltyMode: rules.penaltyMode ?? 'negativeBid',
-      gameEndMode: rules.gameEndMode ?? 'targetScore',
-      targetScore: clampNumber(rules.targetScore, 20, 2000, 101),
-      handsPerMatch: clampNumber(rules.handsPerMatch, 1, 100, 8),
-      minBid: clampNumber(rules.minBid, 1, 13, 5),
+      variantId: rules.variantId ?? 'NORMAL_BID',
+      allowSpectators: rules.allowSpectators ?? true,
+      minimumBid: rules.minimumBid,
+      maximumBid: rules.maximumBid,
+      scoreMode: rules.scoreMode,
+      gameEndMode: rules.gameEndMode,
+      targetScore: rules.targetScore !== undefined ? clampNumber(rules.targetScore, 20, 2000, 101) : undefined,
+      maxRounds: rules.maxRounds !== undefined ? clampNumber(rules.maxRounds, 1, 100, 8) : undefined,
+      allPassAction: rules.allPassAction,
+      buriedCardCount: rules.buriedCardCount,
+      spadesBiddingEnabled: rules.spadesBiddingEnabled,
+      teamBidMode: rules.teamBidMode,
     };
   }
 
@@ -162,7 +166,7 @@ export class Table {
       return { seat: seatIdx, reconnectToken: token, isSpectator: false };
     }
 
-    if (!this.modes.allowSpectators) throw new Error('table is full');
+    if (!this.rules.allowSpectators) throw new Error('table is full');
     const token = genToken();
     this.spectators.push({ playerId, name, socketId, connected: true, reconnectToken: token });
     return { seat: null, reconnectToken: token, isSpectator: true };
@@ -236,20 +240,19 @@ export class Table {
       const seat = this.seats[i]!;
       players[i] = { id: seat.playerId, name: seat.name };
     }
-    const config: Partial<MatchConfig> = {
-      partnership: this.modes.partnership,
-      openHand: this.modes.openHand,
-      fixedSpadesTrump: this.modes.fixedSpadesTrump,
-      mustTrumpWhenVoid: this.modes.strictTrumpRules,
-      mustOvertrumpOrBeat: this.modes.strictTrumpRules,
-      buriedCards: this.modes.buriedCards,
-      scoringMode: this.rules.scoringMode,
-      penaltyMode: this.rules.penaltyMode,
+    const overrides: MatchConfigOverrides = {
+      minimumBid: this.rules.minimumBid,
+      maximumBid: this.rules.maximumBid,
+      scoreMode: this.rules.scoreMode,
       gameEndMode: this.rules.gameEndMode,
       targetScore: this.rules.targetScore,
-      handsPerMatch: this.rules.handsPerMatch,
-      minBid: this.rules.minBid,
+      maxRounds: this.rules.maxRounds,
+      allPassAction: this.rules.allPassAction,
+      buriedCardCount: this.rules.buriedCardCount,
+      spadesBiddingEnabled: this.rules.spadesBiddingEnabled,
+      teamBidMode: this.rules.teamBidMode,
     };
+    const config = createMatchConfig(this.rules.variantId, overrides);
     this.game = new Game(players, config);
     this.game.startHand();
   }
@@ -260,12 +263,12 @@ export class Table {
       name: this.name,
       seatedCount: this.seatedCount,
       inProgress: this.game !== null,
-      modes: this.modes,
+      variantId: this.rules.variantId,
     };
   }
 }
 
-function clampNumber(value: number | undefined, min: number, max: number, fallback: number): number {
-  if (value === undefined || !Number.isFinite(value)) return fallback;
+function clampNumber(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Math.round(value)));
 }

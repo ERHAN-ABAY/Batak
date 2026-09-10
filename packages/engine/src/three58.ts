@@ -172,13 +172,9 @@ export class ThreeFiveEightGame {
     return null;
   }
 
-  private trickRules() {
-    return { mustTrumpWhenVoid: true, mustOvertrumpOrBeat: true };
-  }
-
   getLegalPlays(seat: ThreeSeat): Card[] {
     if (this.phase !== 'PLAYING' || this.whoseTurn() !== seat) return [];
-    return legalPlays(this.hands[seat], this.currentTrick, this.trumpSuit, this.trickRules());
+    return legalPlays(this.hands[seat], this.currentTrick, this.trumpSuit);
   }
 
   playCard(seat: ThreeSeat, card: Card): void {
@@ -187,7 +183,7 @@ export class ThreeFiveEightGame {
 
     const hand = this.hands[seat];
     if (!hand.some((c) => cardsEqual(c, card))) throw new BatakError('CARD_NOT_IN_HAND', 'card not in hand');
-    if (!isLegalPlay(card, hand, this.currentTrick, this.trumpSuit, this.trickRules())) {
+    if (!isLegalPlay(card, hand, this.currentTrick, this.trumpSuit)) {
       throw new BatakError('MUST_FOLLOW_SUIT', 'illegal play: must follow suit if possible');
     }
 

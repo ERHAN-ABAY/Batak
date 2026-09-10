@@ -1,4 +1,4 @@
-import { bidStrength, targetForBid, validateBid } from './bidding.js';
+import { validateAuctionBid, validateCommitment } from './bidding.js';
 import { deal, sortHand } from './deck.js';
 import { BatakError } from './errors.js';
 import { scoreHand } from './scoring.js';
@@ -7,17 +7,19 @@ import {
   Bid,
   Card,
   Contract,
-  DEFAULT_MATCH_CONFIG,
   GameEndMode,
   GamePhase,
   HandResult,
   MatchConfig,
   PLAYER_INDICES,
   PlayerIndex,
+  ScoreMode,
   Suit,
   TrickCard,
+  VariantId,
   cardsEqual,
   partnerOf,
+  teamOf,
 } from './types.js';
 
 export interface PlayerInfo {
@@ -31,16 +33,22 @@ export interface PublicPlayerState {
   cardCount: number;
   score: number;
   hasPassed: boolean;
+  hasCommitted: boolean;
 }
 
-export interface PublicSettings {
-  partnership: boolean;
-  openHand: boolean;
-  fixedSpadesTrump: boolean;
-  mustTrumpWhenVoid: boolean;
-  mustOvertrumpOrBeat: boolean;
+/** A trimmed-down, client-facing view of the table's `MatchConfig` (§26/§31). */
+export interface PublicRuleSet {
+  variantId: VariantId;
+  isTeamGame: boolean;
+  isOpenBidding: boolean;
+  fixedTrump: Suit | null;
+  minimumBid: number;
+  maximumBid: number;
   buriedCards: boolean;
   buriedCardCount: number;
+  scoreMode: ScoreMode;
+  biddingStyle: MatchConfig['biddingStyle'];
+  teamBidMode: MatchConfig['teamBidMode'];
 }
 
 export interface OpenHandInfo {
@@ -51,11 +59,11 @@ export interface OpenHandInfo {
 export interface PublicState {
   phase: GamePhase;
   handNumber: number;
-  handsPerMatch: number;
+  maxRounds: number;
   gameEndMode: GameEndMode;
   targetScore: number;
   dealer: PlayerIndex;
-  settings: PublicSettings;
+  ruleSet: PublicRuleSet;
   players: Record<PlayerIndex, PublicPlayerState>;
   hand: Card[]; // requesting player's own hand only (empty for spectators)
   isSpectator: boolean;
@@ -69,7 +77,14 @@ export interface PublicState {
   tricksWon: Record<PlayerIndex, number>;
   lastHandResult: HandResult | null;
   matchWinner: PlayerIndex | null;
-  /** Declarer's partner's hand, revealed to everyone (Açık mode only). */
+  /**
+   * §5's "Açık İhale" reveal: once the declarer picks trump, the hand of
+   * the seat across from them (partnerOf(declarer)) is turned face-up for
+   * everyone - "ihaleye giren kişi koz seçene kadar karşı el açılmaz, koz
+   * belirlendikten sonra diğerleri açık eli görür". Only set for
+   * OPEN_BID/TEAM_OPEN_BID (isOpenBidding), and only after CHOOSING_TRUMP
+   * resolves.
+   */
   openHand: OpenHandInfo | null;
 }
 
@@ -82,11 +97,18 @@ export class Game {
   dealer: PlayerIndex = 0;
   handNumber = 0;
   phase: GamePhase = 'WAITING_FOR_PLAYERS';
+  matchWinner: PlayerIndex | null = null;
 
   private hands: Record<PlayerIndex, Card[]> = { 0: [], 1: [], 2: [], 3: [] };
+
+  // Auction state (biddingStyle='auction').
   private bids: Bid[] = [];
-  private highestBid: Bid | null = null;
+  private highestBid: { player: PlayerIndex; value: number } | null = null;
   private passedPlayers = new Set<PlayerIndex>();
+
+  // Commitment state (biddingStyle='commitment', Koz Maça taahhütlü).
+  private commitments: Partial<Record<PlayerIndex, number>> = {};
+
   private currentBidder: PlayerIndex | null = null;
 
   private contract: Contract | null = null;
@@ -95,25 +117,13 @@ export class Game {
   private completedTricks: TrickCard[][] = [];
   private tricksWon: Record<PlayerIndex, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
   private lastHandResult: HandResult | null = null;
-  private openHandPlayer: PlayerIndex | null = null;
   private kitty: Card[] = [];
-  matchWinner: PlayerIndex | null = null;
+  private openHandPlayer: PlayerIndex | null = null;
 
-  constructor(players: Record<PlayerIndex, PlayerInfo>, config: Partial<MatchConfig> = {}) {
+  /** `config` must be a fully-resolved `MatchConfig`, built via `createMatchConfig()`. */
+  constructor(players: Record<PlayerIndex, PlayerInfo>, config: MatchConfig) {
     this.players = players;
-    this.config = { ...DEFAULT_MATCH_CONFIG, ...config };
-    if (this.config.openHand && !this.config.partnership) {
-      // Açık only makes sense once a partner exists.
-      this.config.openHand = false;
-    }
-    if (this.config.buriedCards) {
-      // Keep maxBid consistent with the smaller (kitty-reduced) hand size.
-      this.config.maxBid = (52 - this.config.buriedCardCount) / 4;
-    }
-  }
-
-  private cardsPerPlayer(): number {
-    return this.config.buriedCards ? (52 - this.config.buriedCardCount) / 4 : 13;
+    this.config = config;
   }
 
   startHand(seed?: number): void {
@@ -121,21 +131,31 @@ export class Game {
       throw new BatakError('MATCH_ALREADY_COMPLETE', 'match already complete');
     }
     this.handNumber += 1;
-    const { hands, kitty } = deal(this.dealer, this.cardsPerPlayer(), seed);
+    const { hands, kitty } = deal(this.dealer, this.config.cardsPerPlayer, seed);
     this.hands = hands;
     this.kitty = kitty;
     this.bids = [];
     this.highestBid = null;
     this.passedPlayers = new Set();
-    this.currentBidder = ((this.dealer + 1) % 4) as PlayerIndex;
+    this.commitments = {};
+    const leftOfDealer = ((this.dealer + 1) % 4) as PlayerIndex;
+    this.currentBidder = leftOfDealer;
     this.contract = null;
-    this.trickLeader = this.currentBidder;
+    this.trickLeader = leftOfDealer;
     this.currentTrick = [];
     this.completedTricks = [];
     this.tricksWon = { 0: 0, 1: 0, 2: 0, 3: 0 };
     this.lastHandResult = null;
     this.openHandPlayer = null;
-    this.phase = 'BIDDING';
+
+    if (this.config.biddingStyle === 'none') {
+      // Koz Maça Mod A (İhalesiz, §8): no auction at all - straight to play.
+      this.contract = { declarer: null, trumpSuit: this.config.fixedTrump, targets: {}, teamTargets: {} };
+      this.currentBidder = null;
+      this.phase = 'PLAYING';
+    } else {
+      this.phase = 'BIDDING';
+    }
   }
 
   getHand(player: PlayerIndex): Card[] {
@@ -145,9 +165,19 @@ export class Game {
   submitBid(player: PlayerIndex, bid: Bid): void {
     if (this.phase !== 'BIDDING') throw new BatakError('BIDDING_NOT_ACTIVE', 'not in bidding phase');
     if (this.currentBidder !== player) throw new BatakError('NOT_PLAYER_TURN', "not this player's turn to bid");
+
+    if (this.config.biddingStyle === 'commitment') {
+      this.submitCommitment(player, bid);
+    } else {
+      this.submitAuctionBid(player, bid);
+    }
+  }
+
+  private submitAuctionBid(player: PlayerIndex, bid: Bid): void {
     if (this.passedPlayers.has(player)) throw new BatakError('ALREADY_PASSED', 'player already passed');
 
-    const result = validateBid(bid, this.highestBid, this.config);
+    const currentValue = this.highestBid?.value ?? null;
+    const result = validateAuctionBid(bid, currentValue, this.config);
     if (!result.valid) throw new BatakError(result.code ?? 'INVALID_BID', result.reason ?? 'invalid bid');
 
     this.bids.push({ ...bid, player });
@@ -155,14 +185,14 @@ export class Game {
     if (bid.type === 'pas') {
       this.passedPlayers.add(player);
     } else {
-      this.highestBid = { ...bid, player };
+      this.highestBid = { player, value: bid.value! };
     }
 
     if (this.passedPlayers.size === 4) {
       if (this.config.allPassAction === 'dealerTakesMinimum') {
-        const autoBid: Bid = { player: this.dealer, type: 'koz', value: this.config.minBid };
+        const autoBid: Bid = { player: this.dealer, type: 'bid', value: this.config.minimumBid };
         this.bids.push(autoBid);
-        this.resolveAuction(autoBid);
+        this.resolveAuction(this.dealer, this.config.minimumBid);
       } else {
         // redeal - dealer rotates, this hand never counted
         this.dealer = ((this.dealer + 1) % 4) as PlayerIndex;
@@ -173,7 +203,30 @@ export class Game {
     }
 
     if (this.passedPlayers.size === 3 && this.highestBid) {
-      this.resolveAuction(this.highestBid);
+      this.resolveAuction(this.highestBid.player, this.highestBid.value);
+      return;
+    }
+
+    this.advanceBidder();
+  }
+
+  private submitCommitment(player: PlayerIndex, bid: Bid): void {
+    if (bid.type !== 'bid') throw new BatakError('INVALID_BID', 'bu varyantta pas geçilemez, bir sayı söylemelisin');
+
+    const result = validateCommitment(bid.value, this.config);
+    if (!result.valid) throw new BatakError(result.code ?? 'INVALID_BID', result.reason ?? 'invalid bid');
+
+    this.bids.push({ ...bid, player });
+    this.commitments[player] = bid.value!;
+
+    // Eşli Koz Maça "takım doğrudan taahhüdü" (§9): one teammate speaks for the whole team.
+    if (this.config.isTeamGame && this.config.teamBidMode === 'directTeam') {
+      this.commitments[partnerOf(player)] = bid.value!;
+    }
+
+    const allCommitted = PLAYER_INDICES.every((p) => this.commitments[p] !== undefined);
+    if (allCommitted) {
+      this.resolveCommitments();
       return;
     }
 
@@ -182,50 +235,61 @@ export class Game {
 
   private advanceBidder(): void {
     let next = ((this.currentBidder! + 1) % 4) as PlayerIndex;
-    while (this.passedPlayers.has(next)) {
+    const alreadyDone = (p: PlayerIndex) =>
+      this.passedPlayers.has(p) || (this.config.biddingStyle === 'commitment' && this.commitments[p] !== undefined);
+    while (alreadyDone(next)) {
       next = ((next + 1) % 4) as PlayerIndex;
     }
     this.currentBidder = next;
   }
 
-  private resolveAuction(winningBid: Bid): void {
-    const type = winningBid.type as 'koz' | 'gizli' | 'elsiz';
-    const target = targetForBid(winningBid, this.config);
+  private resolveAuction(declarer: PlayerIndex, value: number): void {
     this.contract = {
-      declarer: winningBid.player,
-      type,
-      target,
+      declarer,
       trumpSuit: null,
+      targets: { [declarer]: value },
+      teamTargets: this.config.isTeamGame ? { [teamOf(declarer)]: value } : {},
     };
     this.currentBidder = null;
 
-    if (this.config.partnership && this.config.openHand) {
-      this.openHandPlayer = partnerOf(winningBid.player);
-    }
-
     if (this.config.buriedCards && this.kitty.length > 0) {
-      // Declarer picks up the kitty and must discard back down (EXCHANGE phase).
-      this.hands[winningBid.player] = [...this.hands[winningBid.player], ...this.kitty];
+      // Declarer picks up the kitty and must discard back down (EXCHANGE phase, §10).
+      this.hands[declarer] = [...this.hands[declarer], ...this.kitty];
       this.kitty = [];
       this.phase = 'EXCHANGE';
       return;
     }
 
-    this.enterTrumpOrPlay(winningBid.player);
+    this.enterTrumpOrPlay(declarer);
   }
 
-  /** Every contract always names a trump suit before play - there is no no-trump ("kozsuz") contract. */
+  private resolveCommitments(): void {
+    this.currentBidder = null;
+    const targets = { ...this.commitments };
+    let teamTargets: Partial<Record<0 | 1, number>> = {};
+    if (this.config.isTeamGame) {
+      teamTargets =
+        this.config.teamBidMode === 'directTeam'
+          ? { 0: this.commitments[0]!, 1: this.commitments[1]! }
+          : { 0: this.commitments[0]! + this.commitments[2]!, 1: this.commitments[1]! + this.commitments[3]! };
+    }
+    this.contract = { declarer: null, trumpSuit: this.config.fixedTrump, targets, teamTargets };
+    this.trickLeader = ((this.dealer + 1) % 4) as PlayerIndex;
+    this.phase = 'PLAYING';
+  }
+
+  /** Every contract always names a trump suit before play - there is no no-trump contract (§4, §7). */
   private enterTrumpOrPlay(declarer: PlayerIndex): void {
-    if (this.config.fixedSpadesTrump) {
-      this.contract!.trumpSuit = 'S';
+    if (this.config.fixedTrump) {
+      this.contract!.trumpSuit = this.config.fixedTrump;
       this.phase = 'PLAYING';
-      this.trickLeader = declarer;
+      if (this.config.bidWinnerStarts) this.trickLeader = declarer;
     } else {
       this.phase = 'CHOOSING_TRUMP';
     }
   }
 
-  /** Gömmeli mode: declarer discards `buriedCardCount` cards after picking up the kitty. */
+  /** Gömmeli mode: declarer discards `buriedCardCount` cards after picking up the kitty (§10). */
   exchangeCards(player: PlayerIndex, discards: Card[]): void {
     if (this.phase !== 'EXCHANGE') throw new BatakError('NOT_EXCHANGE_PHASE', 'not in the exchange phase');
     if (!this.contract || this.contract.declarer !== player) {
@@ -254,7 +318,8 @@ export class Game {
       throw new BatakError('NOT_DECLARER', 'only the declarer can choose trump');
     }
     this.contract.trumpSuit = suit;
-    this.trickLeader = player;
+    if (this.config.bidWinnerStarts) this.trickLeader = player;
+    if (this.config.isOpenBidding) this.openHandPlayer = partnerOf(player);
     this.phase = 'PLAYING';
   }
 
@@ -267,17 +332,10 @@ export class Game {
     return null;
   }
 
-  private trickRules() {
-    return {
-      mustTrumpWhenVoid: this.config.mustTrumpWhenVoid,
-      mustOvertrumpOrBeat: this.config.mustOvertrumpOrBeat,
-    };
-  }
-
   /** Legal cards for `player` to play right now (empty outside the PLAYING phase). */
   getLegalPlays(player: PlayerIndex): Card[] {
     if (this.phase !== 'PLAYING' || this.whoseTurn() !== player) return [];
-    return legalPlays(this.hands[player], this.currentTrick, this.contract!.trumpSuit, this.trickRules());
+    return legalPlays(this.hands[player], this.currentTrick, this.contract!.trumpSuit);
   }
 
   playCard(player: PlayerIndex, card: Card): void {
@@ -287,7 +345,7 @@ export class Game {
     const hand = this.hands[player];
     const inHand = hand.some((c) => cardsEqual(c, card));
     if (!inHand) throw new BatakError('CARD_NOT_IN_HAND', 'card not in hand');
-    if (!isLegalPlay(card, hand, this.currentTrick, this.contract!.trumpSuit, this.trickRules())) {
+    if (!isLegalPlay(card, hand, this.currentTrick, this.contract!.trumpSuit)) {
       throw new BatakError('MUST_FOLLOW_SUIT', 'illegal play: must follow suit if possible');
     }
 
@@ -316,6 +374,7 @@ export class Game {
     const result: HandResult = {
       handNumber: this.handNumber,
       dealer: this.dealer,
+      variantId: this.config.variantId,
       contract: this.contract!,
       tricksWon: { ...this.tricksWon },
       scoreDelta: delta,
@@ -327,7 +386,7 @@ export class Game {
     const matchOver =
       this.config.gameEndMode === 'targetScore'
         ? PLAYER_INDICES.some((p) => this.scores[p] >= this.config.targetScore)
-        : this.handNumber >= this.config.handsPerMatch;
+        : this.handNumber >= this.config.maxRounds;
 
     if (matchOver) {
       this.phase = 'MATCH_COMPLETE';
@@ -357,30 +416,39 @@ export class Game {
         cardCount: this.hands[p]?.length ?? 0,
         score: this.scores[p],
         hasPassed: this.passedPlayers.has(p),
+        hasCommitted: this.commitments[p] !== undefined,
       };
     }
+
+    const highestBidAsBid: Bid | null = this.highestBid
+      ? { player: this.highestBid.player, type: 'bid', value: this.highestBid.value }
+      : null;
 
     return {
       phase: this.phase,
       handNumber: this.handNumber,
-      handsPerMatch: this.config.handsPerMatch,
+      maxRounds: this.config.maxRounds,
       gameEndMode: this.config.gameEndMode,
       targetScore: this.config.targetScore,
       dealer: this.dealer,
-      settings: {
-        partnership: this.config.partnership,
-        openHand: this.config.openHand,
-        fixedSpadesTrump: this.config.fixedSpadesTrump,
-        mustTrumpWhenVoid: this.config.mustTrumpWhenVoid,
-        mustOvertrumpOrBeat: this.config.mustOvertrumpOrBeat,
+      ruleSet: {
+        variantId: this.config.variantId,
+        isTeamGame: this.config.isTeamGame,
+        isOpenBidding: this.config.isOpenBidding,
+        fixedTrump: this.config.fixedTrump,
+        minimumBid: this.config.minimumBid,
+        maximumBid: this.config.maximumBid,
         buriedCards: this.config.buriedCards,
         buriedCardCount: this.config.buriedCardCount,
+        scoreMode: this.config.scoreMode,
+        biddingStyle: this.config.biddingStyle,
+        teamBidMode: this.config.teamBidMode,
       },
       players,
       hand: forPlayer !== null ? this.getHand(forPlayer) : [],
       isSpectator: forPlayer === null,
       bids: this.bids.slice(),
-      highestBid: this.highestBid,
+      highestBid: highestBidAsBid,
       currentBidder: this.currentBidder,
       contract: this.contract,
       currentTrick: this.currentTrick.slice(),
