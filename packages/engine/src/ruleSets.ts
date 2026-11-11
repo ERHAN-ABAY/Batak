@@ -115,6 +115,7 @@ export interface MatchConfigOverrides {
   spadesBiddingEnabled?: boolean;
   /** TEAM_SPADES only (§9). */
   teamBidMode?: TeamBidMode;
+  trumpLeadAnytime?: boolean;
   reconnectSeconds?: number;
   botTakeoverSeconds?: number;
 }
@@ -146,6 +147,8 @@ export function createMatchConfig(variantId: VariantId, overrides: MatchConfigOv
 
     spadesBiddingEnabled,
     teamBidMode: overrides.teamBidMode ?? 'individualSum',
+
+    trumpLeadAnytime: overrides.trumpLeadAnytime ?? true,
 
     reconnectSeconds: overrides.reconnectSeconds ?? 30,
     botTakeoverSeconds: overrides.botTakeoverSeconds ?? 1,

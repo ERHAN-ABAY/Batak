@@ -67,7 +67,8 @@ function scheduleNextActionTimer(table: Table): void {
 
   const turn = game.whoseTurn();
   if (turn === null) return;
-  const seatInfo = table.seats[turn];
+  const actor = game.actor() ?? turn;
+  const seatInfo = table.seats[actor];
   const isBot = !!seatInfo?.isBot;
 
   const botMoveDelayMs = game.config.botTakeoverSeconds * 1000;
@@ -90,7 +91,7 @@ function scheduleNextActionTimer(table: Table): void {
         if (phase === 'BIDDING') g.submitBid(turn, decideBotBid(g, turn));
         else if (phase === 'CHOOSING_TRUMP') g.chooseTrump(turn, decideBotTrumpSuit(g, turn));
         else if (phase === 'EXCHANGE') g.exchangeCards(turn, decideBotExchange(g, turn));
-        else if (phase === 'PLAYING') g.playCard(turn, decideBotPlay(g, turn));
+        else if (phase === 'PLAYING') g.playCard(actor, decideBotPlay(g, turn));
       } else if (phase === 'BIDDING') {
         // AFK human fallback: pass in an auction, or the minimum commitment
         // in Koz Maça taahhütlü mode (where passing isn't allowed, §8 Mod B).
@@ -106,7 +107,7 @@ function scheduleNextActionTimer(table: Table): void {
       } else if (phase === 'PLAYING') {
         const legal = g.getLegalPlays(turn);
         const lowest = legal.slice().sort((a, b) => a.rank - b.rank)[0];
-        if (lowest) g.playCard(turn, lowest);
+        if (lowest) g.playCard(actor, lowest);
       }
     } catch {
       // best-effort auto-action; leave the table as-is if it somehow fails
@@ -115,6 +116,9 @@ function scheduleNextActionTimer(table: Table): void {
   }, ms);
   turnTimers.set(table.id, timer);
 }
+
+/** Simplified game: only these three modes can be created. */
+const ALLOWED_VARIANTS: VariantId[] = ['NORMAL_BID', 'TEAM_OPEN_BID', 'SPADES'];
 
 function clearReconnectTimer(tableId: string, seat: PlayerIndex): void {
   const key = `${tableId}:${seat}`;
@@ -220,7 +224,7 @@ io.on('connection', (socket: Socket) => {
     ) => {
       try {
         const table = createTable(payload.tableName ?? '', {
-          variantId: payload.variantId,
+          variantId: ALLOWED_VARIANTS.includes(payload.variantId as VariantId) ? payload.variantId : 'NORMAL_BID',
           allowSpectators: payload.allowSpectators,
           minimumBid: payload.minimumBid,
           maximumBid: payload.maximumBid,

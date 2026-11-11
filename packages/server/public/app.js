@@ -157,7 +157,7 @@ function teamClass(seat) {
 
 // ---------- Variant metadata ----------
 const VARIANT_LABELS = {
-  NORMAL_BID: 'İhaleli Batak',
+  NORMAL_BID: 'Tekli İhale',
   OPEN_BID: 'Açık İhale',
   TEAM_BID: 'Eşli İhaleli Batak',
   TEAM_OPEN_BID: 'Eşli Açık İhale',
@@ -528,6 +528,9 @@ function renderTrick(state, freezeTable) {
       contractDesc = `Koz: ${contract.trumpSuit ? SUIT_SYMBOL[contract.trumpSuit] : '-'}`;
     }
     status = `${contractDesc} — Sıra: ${state.game.players[state.game.turn]?.name ?? ''}`;
+    if (state.game.actor !== null && state.game.actor !== state.game.turn) {
+      status += ` (${state.game.players[state.game.actor]?.name ?? ''} oynatır)`;
+    }
   } else if (state.game.phase === 'HAND_COMPLETE') {
     status = 'El tamamlandı.';
   } else if (state.game.phase === 'MATCH_COMPLETE') {
@@ -540,15 +543,32 @@ function renderTrick(state, freezeTable) {
   $('#status-line').textContent = status;
 }
 
-function renderOpenHandPanel(state) {
+function renderOpenHandPanel(state, freezeHand) {
   const panel = $('#open-hand-panel');
   const info = state.game.openHand;
   panel.classList.toggle('hidden', !info);
   if (!info) return;
   panel.innerHTML = '';
-  panel.appendChild(el('h3', null, `Açık El: ${state.game.players[info.player].name}`));
+  const g = state.game;
+  const iPlayIt = g.phase === 'PLAYING' && g.actor === state.mySeat && g.turn === info.player && !freezeHand;
+  panel.appendChild(el('h3', null, `Açık El: ${g.players[info.player].name}` + (state.mySeat === info.player ? ' (senin elin - ihaleyi alan oynatır)' : '')));
+  const legal = iPlayIt ? legalPlays(info.cards, g.currentTrick, g.contract?.trumpSuit ?? null, g.trumpBroken) : [];
   const row = el('div', 'mini-row');
-  for (const card of info.cards) row.appendChild(cardEl(card, { mini: true }));
+  for (const card of info.cards) {
+    const ok = iPlayIt && legal.some((c) => c.suit === card.suit && c.rank === card.rank);
+    row.appendChild(
+      cardEl(card, {
+        mini: !iPlayIt,
+        disabled: iPlayIt && !ok,
+        onClick: iPlayIt
+          ? () => {
+              sounds.cardPlay();
+              socket.emit('card:play', { tableId: currentTableId, card });
+            }
+          : null,
+      })
+    );
+  }
   panel.appendChild(row);
 }
 
@@ -692,7 +712,8 @@ function renderHand(state, freezeHand) {
   const container = $('#hand');
   container.innerHTML = '';
   if (state.game.phase === 'EXCHANGE') return; // exchange panel handles card selection instead
-  const isPlayingTurn = !freezeHand && state.game.phase === 'PLAYING' && state.game.turn === state.mySeat;
+  const isPlayingTurn =
+    !freezeHand && state.game.phase === 'PLAYING' && state.game.turn === state.mySeat && state.game.actor === state.mySeat;
   const legal = isPlayingTurn
     ? legalPlays(state.game.hand, state.game.currentTrick, state.game.contract?.trumpSuit ?? null, state.game.trumpBroken)
     : [];
@@ -714,7 +735,7 @@ function renderHand(state, freezeHand) {
 function maybePlayTurnSound(state) {
   const iAmUp =
     state.mySeat !== null &&
-    state.game.turn === state.mySeat &&
+    (state.game.actor ?? state.game.turn) === state.mySeat &&
     (state.game.phase === 'BIDDING' || state.game.phase === 'PLAYING' || state.game.phase === 'CHOOSING_TRUMP');
   if (iAmUp && maybePlayTurnSound._last !== state.game.turn + state.game.phase + state.game.handNumber) {
     sounds.yourTurn();
@@ -802,7 +823,7 @@ function renderGame(state, { freezeHand = false } = {}) {
   renderTrumpBadge(state);
   renderSeats(state);
   renderTrick(state, freezeHand);
-  renderOpenHandPanel(state);
+  renderOpenHandPanel(state, freezeHand);
   renderExchangePanel(state);
   renderBidPanel(state);
   renderTrumpPanel(state);

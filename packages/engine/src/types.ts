@@ -178,6 +178,9 @@ export interface MatchConfig extends IBatakRuleSet {
   /** Eşli Koz Maça's two submodes (§9) - TEAM_SPADES only. */
   teamBidMode: TeamBidMode;
 
+  /** Simplified rule: trump may be led from the very first trick (no "koz kırılmadan koz çıkılmaz"). */
+  trumpLeadAnytime: boolean;
+
   reconnectSeconds: number;
   botTakeoverSeconds: number;
 }

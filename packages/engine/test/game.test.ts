@@ -164,6 +164,22 @@ describe('Game - OPEN_BID reveals the "karşı el" once trump is chosen (§5)', 
     expect(state.openHand?.cards.length).toBe(13);
   });
 
+  it('the declarer plays the open hand: partner cannot, declarer can', () => {
+    const game = new Game(makePlayers(), createMatchConfig('OPEN_BID', { maxRounds: 1 }));
+    game.startHand(7);
+    runAuction(game, 1, 6);
+    game.chooseTrump(1, 'H'); // declarer 1 leads, then 2, 3 (open hand = seat 3), 0
+    const c1 = game.getLegalPlays(1)[0];
+    game.playCard(1, c1);
+    game.playCard(2, game.getLegalPlays(2)[0]);
+    expect(game.whoseTurn()).toBe(3);
+    expect(game.actor()).toBe(1);
+    const card = game.getLegalPlays(3)[0];
+    expect(() => game.playCard(3, card)).toThrow();
+    game.playCard(1, card);
+    expect(game.whoseTurn()).toBe(0);
+  });
+
   it('bids are always fully visible to everyone regardless of isOpenBidding', () => {
     const normal = new Game(makePlayers(), createMatchConfig('NORMAL_BID'));
     normal.startHand(7);
@@ -363,7 +379,7 @@ describe('Game - trump always beats the led suit, end-to-end across many random 
 
 describe('Game - "koz kırılmadan koz ile çıkılamaz" (trump-breaking)', () => {
   it('a trick leader may not open with trump before it has been broken this hand', () => {
-    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1, trumpLeadAnytime: false }));
     game.startHand(7);
     const declarer = game.whoseTurn() as PlayerIndex;
     runAuction(game, declarer, 5);
@@ -383,7 +399,7 @@ describe('Game - "koz kırılmadan koz ile çıkılamaz" (trump-breaking)', () =
   });
 
   it('trump becomes legal to lead once it has been played earlier in the hand (as a ruff)', () => {
-    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1, trumpLeadAnytime: false }));
     game.startHand(7);
     const declarer = game.whoseTurn() as PlayerIndex;
     runAuction(game, declarer, 5);
@@ -401,7 +417,7 @@ describe('Game - "koz kırılmadan koz ile çıkılamaz" (trump-breaking)', () =
 
 describe('Game - illegal actions carry typed error codes', () => {
   it('BIDDING_NOT_ACTIVE when bidding after the auction has resolved', () => {
-    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1, trumpLeadAnytime: false }));
     game.startHand(7);
     runAuction(game, 1, 6);
     expect(game.phase).toBe('CHOOSING_TRUMP');
@@ -414,7 +430,7 @@ describe('Game - illegal actions carry typed error codes', () => {
   });
 
   it('NOT_PLAYER_TURN when bidding out of turn', () => {
-    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1, trumpLeadAnytime: false }));
     game.startHand(7);
     try {
       game.submitBid(2, { player: 2, type: 'bid', value: 5 });
@@ -425,7 +441,7 @@ describe('Game - illegal actions carry typed error codes', () => {
   });
 
   it('WRONG_PHASE when playing before the auction resolves', () => {
-    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1, trumpLeadAnytime: false }));
     game.startHand(7);
     try {
       game.playCard(1, game.getHand(1)[0]);
@@ -436,7 +452,7 @@ describe('Game - illegal actions carry typed error codes', () => {
   });
 
   it('BID_TOO_LOW when a bid does not beat the current highest', () => {
-    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1 }));
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { maxRounds: 1, trumpLeadAnytime: false }));
     game.startHand(7);
     game.submitBid(1, { player: 1, type: 'bid', value: 8 });
     try {

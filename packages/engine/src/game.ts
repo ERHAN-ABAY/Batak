@@ -75,6 +75,8 @@ export interface PublicState {
   trumpBroken: boolean;
   currentTrick: TrickCard[];
   turn: PlayerIndex | null;
+  /** Who physically plays the current card: the declarer plays the open (karşı) hand's cards. */
+  actor: PlayerIndex | null;
   lastCompletedTrick: TrickCard[] | null;
   tricksWon: Record<PlayerIndex, number>;
   lastHandResult: HandResult | null;
@@ -346,20 +348,36 @@ export class Game {
     return null;
   }
 
+  /** Seat that actually acts for the current turn: in open bidding the declarer plays the face-up partner's cards. */
+  actor(): PlayerIndex | null {
+    const turn = this.whoseTurn();
+    if (turn === null) return null;
+    if (this.phase === 'PLAYING' && this.openHandPlayer === turn && this.contract?.declarer != null) {
+      return this.contract.declarer;
+    }
+    return turn;
+  }
+
+  private trumpLeadable(): boolean {
+    return this.config.trumpLeadAnytime || this.trumpBroken;
+  }
+
   /** Legal cards for `player` to play right now (empty outside the PLAYING phase). */
   getLegalPlays(player: PlayerIndex): Card[] {
     if (this.phase !== 'PLAYING' || this.whoseTurn() !== player) return [];
-    return legalPlays(this.hands[player], this.currentTrick, this.contract!.trumpSuit, this.trumpBroken);
+    return legalPlays(this.hands[player], this.currentTrick, this.contract!.trumpSuit, this.trumpLeadable());
   }
 
-  playCard(player: PlayerIndex, card: Card): void {
+  /** `actor` is who sends the move; the card comes from the seat whose turn it is (differs only for the open hand). */
+  playCard(actor: PlayerIndex, card: Card): void {
     if (this.phase !== 'PLAYING') throw new BatakError('WRONG_PHASE', 'not in playing phase');
-    if (this.whoseTurn() !== player) throw new BatakError('NOT_PLAYER_TURN', "not this player's turn to play");
+    if (this.actor() !== actor) throw new BatakError('NOT_PLAYER_TURN', "not this player's turn to play");
+    const player = this.whoseTurn()!;
 
     const hand = this.hands[player];
     const inHand = hand.some((c) => cardsEqual(c, card));
     if (!inHand) throw new BatakError('CARD_NOT_IN_HAND', 'card not in hand');
-    if (!isLegalPlay(card, hand, this.currentTrick, this.contract!.trumpSuit, this.trumpBroken)) {
+    if (!isLegalPlay(card, hand, this.currentTrick, this.contract!.trumpSuit, this.trumpLeadable())) {
       throw new BatakError('MUST_FOLLOW_SUIT', 'illegal play: must follow suit if possible');
     }
 
@@ -467,9 +485,10 @@ export class Game {
       highestBid: highestBidAsBid,
       currentBidder: this.currentBidder,
       contract: this.contract,
-      trumpBroken: this.trumpBroken,
+      trumpBroken: this.trumpLeadable(),
       currentTrick: this.currentTrick.slice(),
       turn: this.whoseTurn(),
+      actor: this.actor(),
       lastCompletedTrick: this.getLastCompletedTrick(),
       tricksWon: { ...this.tricksWon },
       lastHandResult: this.lastHandResult,
