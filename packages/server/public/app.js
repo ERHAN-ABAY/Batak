@@ -358,7 +358,7 @@ function renderWaiting(state) {
 function relPos(seatIndex, mySeat) {
   const base = mySeat === null ? 0 : mySeat;
   const diff = (seatIndex - base + 4) % 4;
-  return ['bottom', 'left', 'top', 'right'][diff];
+  return ['bottom', 'right', 'top', 'left'][diff];
 }
 
 /** The trick target this seat is playing for right now, or null if it has none this hand. */

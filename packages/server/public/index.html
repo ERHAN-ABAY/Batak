@@ -61,13 +61,14 @@
             </label>
             <label>Puanlama
               <select id="ruleScoreMode">
+                <option value="Multiplier10">İhale x10 + fazla el (batarsa -ihale x10)</option>
                 <option value="TakenMinusBidOnFail">Alınan el kadar (batarsa -ihale)</option>
                 <option value="BidOnly">Sadece ihale kadar</option>
-                <option value="Multiplier10">İhale x10 + fazla el</option>
               </select>
             </label>
             <label>Herkes pas geçerse
               <select id="ruleAllPassAction">
+                <option value="firstBidderForced">Krupiyenin sağındaki 4 (eşlide 7) el alır</option>
                 <option value="dealerTakesMinimum">Dağıtıcı minimumu alır</option>
                 <option value="redeal">Yeniden dağıt</option>
               </select>
@@ -79,7 +80,7 @@
               </select>
             </label>
             <label>Hedef skor
-              <input id="ruleTargetScore" type="number" min="20" max="2000" value="101" />
+              <input id="ruleTargetScore" type="number" min="20" max="2000" value="500" />
             </label>
             <label>El sayısı (sabit modda)
               <input id="ruleMaxRounds" type="number" min="1" max="100" value="8" />

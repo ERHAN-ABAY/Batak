@@ -196,7 +196,14 @@ export class Game {
     }
 
     if (this.passedPlayers.size === 4) {
-      if (this.config.allPassAction === 'dealerTakesMinimum') {
+      if (this.config.allPassAction === 'firstBidderForced') {
+        // Real Batak: everyone passed -> the player at the dealer's right (first bidder)
+        // must play, naming trump, for one less than the minimum bid (4 solo / 7 team).
+        const first = ((this.dealer + 1) % 4) as PlayerIndex;
+        const forced = Math.max(1, this.config.minimumBid - 1);
+        this.bids.push({ player: first, type: 'bid', value: forced });
+        this.resolveAuction(first, forced);
+      } else if (this.config.allPassAction === 'dealerTakesMinimum') {
         const autoBid: Bid = { player: this.dealer, type: 'bid', value: this.config.minimumBid };
         this.bids.push(autoBid);
         this.resolveAuction(this.dealer, this.config.minimumBid);

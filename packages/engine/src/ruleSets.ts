@@ -135,11 +135,11 @@ export function createMatchConfig(variantId: VariantId, overrides: MatchConfigOv
     variantId,
     biddingStyle,
 
-    scoreMode: overrides.scoreMode ?? 'TakenMinusBidOnFail',
+    scoreMode: overrides.scoreMode ?? 'Multiplier10',
     gameEndMode: overrides.gameEndMode ?? 'targetScore',
-    targetScore: overrides.targetScore ?? 101,
+    targetScore: overrides.targetScore ?? 500,
     maxRounds: overrides.maxRounds ?? 8,
-    allPassAction: overrides.allPassAction ?? 'dealerTakesMinimum',
+    allPassAction: overrides.allPassAction ?? 'firstBidderForced',
 
     buriedCards: variantId === 'BURIED_BID',
     buriedCardCount,

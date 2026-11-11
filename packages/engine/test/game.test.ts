@@ -115,7 +115,7 @@ describe('Game - all players pass (§6.4/§12)', () => {
   });
 
   it('allPassAction=dealerTakesMinimum (default): dealer auto-declares at minimumBid', () => {
-    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID'));
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID', { allPassAction: 'dealerTakesMinimum' }));
     game.startHand(7);
     const dealer = game.dealer;
 
@@ -127,6 +127,17 @@ describe('Game - all players pass (§6.4/§12)', () => {
     expect(game.phase).toBe('CHOOSING_TRUMP');
     expect(game.getPublicState(0).contract?.declarer).toBe(dealer);
     expect(game.getPublicState(0).contract?.targets[dealer]).toBe(game.config.minimumBid);
+  });
+});
+
+describe('Game - all pass default (firstBidderForced)', () => {
+  it('player at the first bidder must take minimumBid-1 and choose trump', () => {
+    const game = new Game(makePlayers(), createMatchConfig('NORMAL_BID'));
+    game.startHand(7);
+    for (const p of [1, 2, 3, 0] as const) game.submitBid(p, { player: p, type: 'pas' });
+    expect(game.phase).toBe('CHOOSING_TRUMP');
+    expect(game.getPublicState(1).contract?.declarer).toBe(1);
+    expect(game.getPublicState(1).contract?.targets[1]).toBe(4);
   });
 });
 
@@ -187,7 +198,7 @@ describe('Game - TEAM_BID (Eşli İhaleli Batak, §6)', () => {
 
 describe('Game - SPADES (Koz Maça)', () => {
   it('Mod B (taahhütlü, default): each player independently commits a target, no pass allowed', () => {
-    const game = new Game(makePlayers(), createMatchConfig('SPADES', { maxRounds: 1 }));
+    const game = new Game(makePlayers(), createMatchConfig('SPADES', { maxRounds: 1, scoreMode: 'TakenMinusBidOnFail' }));
     game.startHand(7);
     expect(game.phase).toBe('BIDDING');
     expect(() => game.submitBid(1, { player: 1, type: 'pas' })).toThrow();
@@ -217,7 +228,7 @@ describe('Game - SPADES (Koz Maça)', () => {
   });
 
   it('each seat is scored independently against its own commitment (like 3-5-8 roles)', () => {
-    const game = new Game(makePlayers(), createMatchConfig('SPADES', { maxRounds: 1 }));
+    const game = new Game(makePlayers(), createMatchConfig('SPADES', { maxRounds: 1, scoreMode: 'TakenMinusBidOnFail' }));
     game.startHand(7);
     game.submitBid(1, { player: 1, type: 'bid', value: 1 });
     game.submitBid(2, { player: 2, type: 'bid', value: 1 });

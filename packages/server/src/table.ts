@@ -77,7 +77,7 @@ export class Table {
       maximumBid: rules.maximumBid,
       scoreMode: rules.scoreMode,
       gameEndMode: rules.gameEndMode,
-      targetScore: rules.targetScore !== undefined ? clampNumber(rules.targetScore, 20, 2000, 101) : undefined,
+      targetScore: rules.targetScore !== undefined ? clampNumber(rules.targetScore, 20, 2000, 500) : undefined,
       maxRounds: rules.maxRounds !== undefined ? clampNumber(rules.maxRounds, 1, 100, 8) : undefined,
       allPassAction: rules.allPassAction,
       buriedCardCount: rules.buriedCardCount,

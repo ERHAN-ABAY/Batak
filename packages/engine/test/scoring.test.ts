@@ -4,7 +4,7 @@ import { scoreHand } from '../src/scoring.js';
 import { Contract } from '../src/types.js';
 
 describe('scoreHand - solo, TakenMinusBidOnFail (default, §19)', () => {
-  const config = createMatchConfig('NORMAL_BID');
+  const config = createMatchConfig('NORMAL_BID', { scoreMode: 'TakenMinusBidOnFail' });
 
   it('a made contract scores the actual tricks taken (not just the bid), §4 example', () => {
     const contract: Contract = { declarer: 0, trumpSuit: 'S', targets: { 0: 8 }, teamTargets: {} };
@@ -73,7 +73,7 @@ describe('scoreHand - scoreMode variants (§19)', () => {
 
 describe('scoreHand - team variants (§6, §9)', () => {
   it('combines declarer + partner tricks against the team target, both get the same delta', () => {
-    const config = createMatchConfig('TEAM_BID');
+    const config = createMatchConfig('TEAM_BID', { scoreMode: 'TakenMinusBidOnFail' });
     // declarer=3 (team 1&3), partner=1. combined tricks = 5+6=11 >= target 10 -> made (§6 example)
     const contract: Contract = { declarer: 3, trumpSuit: 'S', targets: { 3: 10 }, teamTargets: { 1: 10 } };
     const tricksWon = { 0: 1, 1: 6, 2: 1, 3: 5 };
@@ -83,7 +83,7 @@ describe('scoreHand - team variants (§6, §9)', () => {
   });
 
   it('fails the contract when the combined team total falls short', () => {
-    const config = createMatchConfig('TEAM_BID');
+    const config = createMatchConfig('TEAM_BID', { scoreMode: 'TakenMinusBidOnFail' });
     const contract: Contract = { declarer: 0, trumpSuit: 'S', targets: { 0: 10 }, teamTargets: { 0: 10 } };
     const tricksWon = { 0: 3, 1: 4, 2: 4, 3: 2 };
     const delta = scoreHand(contract, tricksWon, config);
@@ -92,7 +92,7 @@ describe('scoreHand - team variants (§6, §9)', () => {
   });
 
   it('the opposing team with no target of its own banks its combined tricks 1-for-1', () => {
-    const config = createMatchConfig('TEAM_BID');
+    const config = createMatchConfig('TEAM_BID', { scoreMode: 'TakenMinusBidOnFail' });
     const contract: Contract = { declarer: 0, trumpSuit: 'S', targets: { 0: 8 }, teamTargets: { 0: 8 } };
     const tricksWon = { 0: 4, 1: 2, 2: 5, 3: 2 };
     const delta = scoreHand(contract, tricksWon, config);
@@ -101,7 +101,7 @@ describe('scoreHand - team variants (§6, §9)', () => {
   });
 
   it('Eşli Koz Maça: both teams have their own target and are scored independently (§9)', () => {
-    const config = createMatchConfig('TEAM_SPADES');
+    const config = createMatchConfig('TEAM_SPADES', { scoreMode: 'TakenMinusBidOnFail' });
     const contract: Contract = {
       declarer: null,
       trumpSuit: 'S',

@@ -146,7 +146,7 @@ export type ScoreMode = 'TakenMinusBidOnFail' | 'BidOnly' | 'Multiplier10';
 /** How a full match ends (§18). */
 export type GameEndMode = 'targetScore' | 'fixedHands';
 /** What happens when every player passes during an auction (§6.4/§12). */
-export type AllPassAction = 'redeal' | 'dealerTakesMinimum';
+export type AllPassAction = 'redeal' | 'dealerTakesMinimum' | 'firstBidderForced';
 /** Koz Maça Eşli's two team-bidding shapes (§9). */
 export type TeamBidMode = 'individualSum' | 'directTeam';
 /** How the current auction/commitment round is driven. */

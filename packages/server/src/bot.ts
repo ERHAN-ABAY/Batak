@@ -1,7 +1,7 @@
 /**
- * "Easy" bot AI (per BATAK_DETAYLI_KURALLAR_VE_OYUN_TIPLERI.md §22):
- * follows suit (via the engine's own legality checks), plays a random
- * legal card, and bids/commits using a small hand-strength heuristic. Kept
+ * "Normal" bot AI (per BATAK_DETAYLI_KURALLAR_VE_OYUN_TIPLERI.md §22):
+ * follows suit (via the engine's own legality checks), plays economically
+ * (cheapest legal card, cash aces/kings when leading), and bids/commits using a small hand-strength heuristic. Kept
  * deliberately simple - this is the "Kolay" tier, not Normal/Zor/Uzman.
  */
 import { Bid, Card, Game, MatchConfig, PlayerIndex, Suit } from '@batak/engine';
@@ -74,7 +74,28 @@ export function decideBotTrumpSuit(game: Game, seat: PlayerIndex): Suit {
 
 export function decideBotPlay(game: Game, seat: PlayerIndex): Card {
   const legal = game.getLegalPlays(seat);
-  return legal[Math.floor(Math.random() * legal.length)];
+  const state = game.getPublicState(seat);
+  const trump = state.contract?.trumpSuit ?? null;
+  const asc = legal.slice().sort((a, b) => a.rank - b.rank);
+
+  // Following (or ruffing / discarding): the engine already forces beating cards when
+  // possible, so the cheapest legal card is always the right economy play.
+  if (state.currentTrick.length > 0) return asc[0];
+
+  // Leading: cash sure winners first (aces, then kings of a side suit; top trump once trump is broken).
+  const sideAces = legal.filter((c) => c.rank === 14 && c.suit !== trump);
+  if (sideAces.length > 0) return sideAces[0];
+  if (trump && state.trumpBroken) {
+    const topTrump = legal.filter((c) => c.suit === trump).sort((a, b) => b.rank - a.rank)[0];
+    if (topTrump && topTrump.rank >= 13) return topTrump;
+  }
+  const sideKings = legal.filter((c) => c.rank === 13 && c.suit !== trump);
+  if (sideKings.length > 0) return sideKings[0];
+
+  // Otherwise lead low from the longest side suit to keep the high cards for later.
+  const count: Record<string, number> = {};
+  for (const c of legal) count[c.suit] = (count[c.suit] ?? 0) + 1;
+  return asc.slice().sort((a, b) => (a.suit === trump ? 1 : 0) - (b.suit === trump ? 1 : 0) || count[b.suit] - count[a.suit] || a.rank - b.rank)[0];
 }
 
 /** Gömmeli mode: discard the lowest-ranked cards - a simple, safe default. */
