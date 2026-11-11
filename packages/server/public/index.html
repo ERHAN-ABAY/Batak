@@ -114,51 +114,59 @@
   </section>
 
   <section id="game" class="screen hidden">
-    <div id="trumpBadge" class="trump-badge hidden"></div>
-
-    <div id="table-felt">
-      <div id="seat-top" class="seat-pos"></div>
-      <div id="seat-left" class="seat-pos"></div>
-      <div id="seat-right" class="seat-pos"></div>
-      <div id="seat-bottom" class="seat-pos"></div>
-      <div id="trick-center">
-        <div class="trick-slot" data-pos="top"></div>
-        <div class="trick-slot" data-pos="left"></div>
-        <div class="trick-slot" data-pos="right"></div>
-        <div class="trick-slot" data-pos="bottom"></div>
-        <div id="turn-timer" class="hidden"></div>
-      </div>
-    </div>
-
-    <div id="open-hand-panel" class="panel hidden"></div>
-    <div id="exchange-panel" class="panel hidden"></div>
-    <div id="bid-panel" class="panel hidden"></div>
-    <div id="trump-panel" class="panel hidden"></div>
-    <div id="hand-complete-panel" class="panel hidden"></div>
-    <div id="match-complete-panel" class="panel hidden"></div>
-
-    <div id="hand"></div>
-
-    <div id="chat-panel" class="panel">
-      <h3>Sohbet</h3>
-      <div id="chatLog"></div>
-      <div class="row">
-        <input id="chatInput" type="text" maxlength="300" placeholder="Mesaj yaz..." />
-        <button id="chatSendBtn">Gönder</button>
-      </div>
-    </div>
-
-    <div id="score-history-panel" class="panel hidden">
-      <h3>Skor Tablosu</h3>
-      <div id="scoreHistoryTable"></div>
-    </div>
-
-    <div id="status-line"></div>
     <header id="scoreboard-wrap">
       <div id="modeBadges" class="badges"></div>
       <div id="scoreboard"></div>
-      <button id="leaveGameBtn" class="btn-leave">Oyundan Çık</button>
+      <button id="leaveGameBtn" class="btn-leave">Çık</button>
     </header>
+
+    <div class="game-layout">
+      <main class="game-main">
+        <div class="status-row">
+          <div id="trumpBadge" class="trump-badge hidden"></div>
+          <div id="status-line"></div>
+        </div>
+
+        <div id="table-felt">
+          <div id="seat-top" class="seat-pos"></div>
+          <div id="seat-left" class="seat-pos"></div>
+          <div id="seat-right" class="seat-pos"></div>
+          <div id="seat-bottom" class="seat-pos"></div>
+          <div id="trick-center">
+            <div class="trick-slot" data-pos="top"></div>
+            <div class="trick-slot" data-pos="left"></div>
+            <div class="trick-slot" data-pos="right"></div>
+            <div class="trick-slot" data-pos="bottom"></div>
+            <div id="turn-timer" class="hidden"></div>
+          </div>
+        </div>
+
+        <div id="open-hand-panel" class="panel hidden"></div>
+        <div id="exchange-panel" class="panel hidden"></div>
+        <div id="bid-panel" class="panel hidden"></div>
+        <div id="trump-panel" class="panel hidden"></div>
+        <div id="hand-complete-panel" class="panel hidden"></div>
+        <div id="match-complete-panel" class="panel hidden"></div>
+
+        <div id="hand"></div>
+      </main>
+
+      <aside class="game-side">
+        <details id="score-history-panel" class="panel hidden" open>
+          <summary>Skor Tablosu</summary>
+          <div id="scoreHistoryTable"></div>
+        </details>
+
+        <details id="chat-panel" class="panel">
+          <summary>Sohbet</summary>
+          <div id="chatLog"></div>
+          <div class="row">
+            <input id="chatInput" type="text" maxlength="300" placeholder="Mesaj yaz..." />
+            <button id="chatSendBtn">Gönder</button>
+          </div>
+        </details>
+      </aside>
+    </div>
   </section>
 
   <script src="/socket.io/socket.io.js"></script>

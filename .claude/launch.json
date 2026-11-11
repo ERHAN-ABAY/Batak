@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "batak", "runtimeExecutable": "node", "runtimeArgs": ["packages/server/dist/index.js"], "port": 3000 }
+  ]
+}

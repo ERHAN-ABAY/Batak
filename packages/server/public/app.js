@@ -111,6 +111,7 @@ function cardEl(card, { mini = false, disabled = false, selected = false, onClic
       (RED_SUITS.has(card.suit) ? ' red' : '') +
       (mini ? ' mini' : '') +
       (disabled ? ' disabled' : '') +
+      (onClick && !disabled ? ' playable' : '') +
       (selected ? ' selected' : '')
   );
   const label = `${rankLabel(card.rank)}${SUIT_SYMBOL[card.suit]}`;
@@ -462,6 +463,12 @@ function renderSeats(state) {
     container.appendChild(nameEl);
     if (state.seats[i] && state.seats[i].isBot) container.appendChild(el('div', 'bot-tag', '🤖 bot'));
 
+    if (state.game.phase === 'BIDDING') {
+      const mine = state.game.bids.filter((b) => b.player === i);
+      const last = mine[mine.length - 1];
+      if (last) container.appendChild(el('div', 'bid-tag', last.type === 'pas' ? 'Pas' : String(last.value)));
+    }
+
     const target = state.game.contract ? targetFor(state, i) : null;
     if (target !== null && state.game.phase === 'PLAYING') {
       container.appendChild(el('div', 'bot-tag', `Hedef: ${target}`));
@@ -493,6 +500,11 @@ function renderTrick(state, freezeTable) {
     if (!slot) continue;
     slot.appendChild(el('div', 'slot-name', state.game.players[tc.player].name));
     slot.appendChild(cardEl(tc.card, { mini: true }));
+  }
+  if (freezeTable && trick.length === 4) {
+    const w = bestCardInTrick(trick, state.game.contract ? state.game.contract.trumpSuit : null);
+    const ws = document.querySelector(`.trick-slot[data-pos="${relPos(w.player, state.mySeat)}"]`);
+    if (ws) ws.classList.add('winning');
   }
 
   // sound + highlight when a trick just completed
@@ -627,28 +639,27 @@ function renderBidPanel(state) {
   panel.appendChild(el('h3', null, isCommitment ? 'Kaç El Alacaksın?' : 'Teklif Ver'));
   if (ruleSet.fixedTrump) panel.appendChild(el('div', 'hint', `Bu masada koz her zaman ${SUIT_SYMBOL[ruleSet.fixedTrump]}.`));
 
-  const row = el('div', 'row');
-  const select = document.createElement('select');
-  for (let v = ruleSet.minimumBid; v <= ruleSet.maximumBid; v++) select.appendChild(new Option(String(v), String(v)));
-  row.appendChild(select);
-
-  const submitBtn = el('button', null, isCommitment ? 'Söyle' : 'Teklif Et');
-  submitBtn.addEventListener('click', () => {
-    sounds.bid();
-    socket.emit('bid:submit', { tableId: currentTableId, bid: { type: 'bid', value: Number(select.value) } });
-  });
-  row.appendChild(submitBtn);
-  panel.appendChild(row);
+  const current = state.game.highestBid ? state.game.highestBid.value : null;
+  const grid = el('div', 'bid-grid');
+  for (let v = ruleSet.minimumBid; v <= ruleSet.maximumBid; v++) {
+    const taken = !isCommitment && current !== null && v <= current;
+    const b = el('button', 'bid-num', String(v));
+    b.disabled = taken;
+    b.addEventListener('click', () => {
+      sounds.bid();
+      socket.emit('bid:submit', { tableId: currentTableId, bid: { type: 'bid', value: v } });
+    });
+    grid.appendChild(b);
+  }
+  panel.appendChild(grid);
 
   if (!isCommitment) {
-    const passRow = el('div', 'row');
-    const passBtn = el('button', null, 'Pas');
+    const passBtn = el('button', 'bid-pass', 'Pas');
     passBtn.addEventListener('click', () => {
       sounds.bid();
       socket.emit('bid:submit', { tableId: currentTableId, bid: { type: 'pas' } });
     });
-    passRow.appendChild(passBtn);
-    panel.appendChild(passRow);
+    panel.appendChild(passBtn);
   }
 }
 
@@ -719,11 +730,13 @@ function renderHand(state, freezeHand) {
     : [];
   for (const card of state.game.hand) {
     const isLegal = legal.some((c) => c.suit === card.suit && c.rank === card.rank);
-    const disabled = !isPlayingTurn || !isLegal;
+    // Dim only the cards I cannot play on my own turn; at any other time the hand stays fully readable.
+    const disabled = isPlayingTurn && !isLegal;
+    const clickable = isPlayingTurn && isLegal;
     container.appendChild(
       cardEl(card, {
         disabled,
-        onClick: () => {
+        onClick: !clickable ? null : () => {
           sounds.cardPlay();
           socket.emit('card:play', { tableId: currentTableId, card });
         },

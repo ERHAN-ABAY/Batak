@@ -78,6 +78,8 @@ export interface PublicState {
   /** Who physically plays the current card: the declarer plays the open (karşı) hand's cards. */
   actor: PlayerIndex | null;
   lastCompletedTrick: TrickCard[] | null;
+  /** Every card from completed tricks this hand (public information, used for card counting). */
+  playedCards: Card[];
   tricksWon: Record<PlayerIndex, number>;
   lastHandResult: HandResult | null;
   /** Every completed hand this match, oldest first - for a running score-by-hand table. */
@@ -502,6 +504,7 @@ export class Game {
       turn: this.whoseTurn(),
       actor: this.actor(),
       lastCompletedTrick: this.getLastCompletedTrick(),
+      playedCards: this.completedTricks.flat().map((tc) => tc.card),
       tricksWon: { ...this.tricksWon },
       lastHandResult: this.lastHandResult,
       handHistory: this.handHistory.slice(),
