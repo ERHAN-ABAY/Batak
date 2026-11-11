@@ -26,10 +26,9 @@ function autoPlayHand(game: Game): void {
 /** Runs a standard auction to completion: `declarer` bids `value`, everyone else passes. */
 function runAuction(game: Game, declarer: PlayerIndex, value: number): void {
   game.submitBid(declarer, { player: declarer, type: 'bid', value });
-  let next = ((declarer + 1) % 4) as PlayerIndex;
   while (game.phase === 'BIDDING') {
+    const next = game.whoseTurn()!;
     game.submitBid(next, { player: next, type: 'pas' });
-    next = ((next + 1) % 4) as PlayerIndex;
   }
 }
 
@@ -461,5 +460,19 @@ describe('Game - illegal actions carry typed error codes', () => {
     } catch (err) {
       expect((err as any).code).toBe('BID_TOO_LOW');
     }
+  });
+});
+
+describe('Game - team auction keeps the bid with the holding side', () => {
+  it('partner of the high bidder is skipped and the auction ends when both opponents pass', () => {
+    const game = new Game(makePlayers(), createMatchConfig('TEAM_OPEN_BID'));
+    game.startHand(7); // dealer 0 -> seat 1 bids first
+    game.submitBid(1, { player: 1, type: 'bid', value: 8 });
+    expect(game.whoseTurn()).toBe(2); // opponent of seat 1's team
+    game.submitBid(2, { player: 2, type: 'pas' });
+    expect(game.whoseTurn()).toBe(0); // seat 3 (partner of 1) is skipped
+    game.submitBid(0, { player: 0, type: 'pas' });
+    expect(game.phase).toBe('CHOOSING_TRUMP');
+    expect(game.getPublicState(1).contract?.declarer).toBe(1);
   });
 });

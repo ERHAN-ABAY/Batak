@@ -218,6 +218,17 @@ export class Game {
       return;
     }
 
+    // Team auction: the side holding the high bid keeps it - its partner never bids against it,
+    // so the auction is settled as soon as both opponents have passed.
+    if (this.config.isTeamGame && this.highestBid) {
+      const holder = teamOf(this.highestBid.player);
+      const opponents = PLAYER_INDICES.filter((p) => teamOf(p) !== holder);
+      if (opponents.every((p) => this.passedPlayers.has(p))) {
+        this.resolveAuction(this.highestBid.player, this.highestBid.value);
+        return;
+      }
+    }
+
     if (this.passedPlayers.size === 3 && this.highestBid) {
       this.resolveAuction(this.highestBid.player, this.highestBid.value);
       return;
@@ -252,7 +263,8 @@ export class Game {
   private advanceBidder(): void {
     let next = ((this.currentBidder! + 1) % 4) as PlayerIndex;
     const alreadyDone = (p: PlayerIndex) =>
-      this.passedPlayers.has(p) || (this.config.biddingStyle === 'commitment' && this.commitments[p] !== undefined);
+      this.passedPlayers.has(p) ||
+      (this.config.isTeamGame && this.highestBid !== null && teamOf(p) === teamOf(this.highestBid.player)) || (this.config.biddingStyle === 'commitment' && this.commitments[p] !== undefined);
     while (alreadyDone(next)) {
       next = ((next + 1) % 4) as PlayerIndex;
     }
