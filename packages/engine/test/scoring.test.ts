@@ -116,3 +116,20 @@ describe('scoreHand - team variants (§6, §9)', () => {
     expect(delta[3]).toBe(delta[1]);
   });
 });
+
+describe('default scoring per variant', () => {
+  it('team game: bid 8, took 9 -> +9 (not 81); failing costs the bid', () => {
+    const config = createMatchConfig('TEAM_OPEN_BID');
+    expect(config.scoreMode).toBe('TakenMinusBidOnFail');
+    const contract = { declarer: 1 as const, trumpSuit: 'H' as const, targets: { 1: 8 }, teamTargets: { 1: 8 } as Partial<Record<0 | 1, number>> };
+    const made = scoreHand(contract, { 0: 2, 1: 5, 2: 2, 3: 4 }, config);
+    expect(made[1]).toBe(9);
+    expect(made[3]).toBe(9);
+    expect(made[0]).toBe(4); // opponents bank their tricks
+    const failed = scoreHand(contract, { 0: 4, 1: 3, 2: 2, 3: 4 }, config);
+    expect(failed[1]).toBe(-8);
+  });
+  it('solo game keeps 10 x bid', () => {
+    expect(createMatchConfig('NORMAL_BID').scoreMode).toBe('Multiplier10');
+  });
+});

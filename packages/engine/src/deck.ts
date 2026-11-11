@@ -55,7 +55,7 @@ export function deal(dealer: PlayerIndex, cardsPerPlayer = 13, seed?: number): D
 }
 
 export function sortHand(hand: Card[]): Card[] {
-  const suitOrder: Record<string, number> = { S: 0, H: 1, D: 2, C: 3 };
+  const suitOrder: Record<string, number> = { H: 0, S: 1, D: 2, C: 3 };
   return hand
     .slice()
     .sort((a, b) => suitOrder[a.suit] - suitOrder[b.suit] || b.rank - a.rank);

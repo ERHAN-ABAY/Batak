@@ -136,9 +136,10 @@ export function createMatchConfig(variantId: VariantId, overrides: MatchConfigOv
     variantId,
     biddingStyle,
 
-    scoreMode: overrides.scoreMode ?? 'Multiplier10',
+    // Team games score the tricks taken (bid 8, took 9 -> +9; failed -> -bid); solo games use 10 x bid.
+    scoreMode: overrides.scoreMode ?? (ruleSet.isTeamGame ? 'TakenMinusBidOnFail' : 'Multiplier10'),
     gameEndMode: overrides.gameEndMode ?? 'targetScore',
-    targetScore: overrides.targetScore ?? 500,
+    targetScore: overrides.targetScore ?? (ruleSet.isTeamGame ? 101 : 500),
     maxRounds: overrides.maxRounds ?? 8,
     allPassAction: overrides.allPassAction ?? 'firstBidderForced',
 

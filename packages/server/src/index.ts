@@ -228,7 +228,7 @@ io.on('connection', (socket: Socket) => {
           allowSpectators: payload.allowSpectators,
           minimumBid: payload.minimumBid,
           maximumBid: payload.maximumBid,
-          scoreMode: payload.scoreMode,
+          scoreMode: payload.scoreMode || undefined,
           gameEndMode: payload.gameEndMode,
           targetScore: payload.targetScore,
           maxRounds: payload.maxRounds,

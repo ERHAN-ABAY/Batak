@@ -153,7 +153,7 @@ export class ThreeFiveEightGame {
   }
 
   getHand(seat: ThreeSeat): Card[] {
-    const suitOrder: Record<string, number> = { S: 0, H: 1, D: 2, C: 3 };
+    const suitOrder: Record<string, number> = { H: 0, S: 1, D: 2, C: 3 };
     return this.hands[seat]
       .slice()
       .sort((a, b) => suitOrder[a.suit] - suitOrder[b.suit] || b.rank - a.rank);

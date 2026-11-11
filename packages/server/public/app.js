@@ -279,7 +279,7 @@ $('#createTableBtn').addEventListener('click', () => {
       minimumBid: numOrUndef($('#ruleMinBid').value),
       maximumBid: numOrUndef($('#ruleMaxBid').value),
       buriedCardCount: Number($('#ruleBuriedCount').value) || undefined,
-      scoreMode: $('#ruleScoreMode').value,
+      scoreMode: $('#ruleScoreMode').value || undefined,
       allPassAction: $('#ruleAllPassAction').value,
       gameEndMode: $('#ruleGameEndMode').value,
       targetScore: Number($('#ruleTargetScore').value) || undefined,
