@@ -7,7 +7,7 @@ Oyun sunucudan servis edildigi icin sunucu guncellenince uygulama da otomatik gu
 - Sunucu `http://` oldugu icin Android'de `usesCleartextTraffic` acilir (setup.ps1 yapar).
 
 ## APK uretme
-Gereken: Flutter SDK + Android SDK (JDK 17).
+Gereken: Flutter SDK + Android SDK (JDK 21).
 ```
 cd packages/mobile
 ./setup.ps1
