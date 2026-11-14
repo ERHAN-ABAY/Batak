@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.log
 .env
+packages/mobile/build/
+packages/mobile/.dart_tool/

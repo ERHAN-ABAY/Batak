@@ -1,0 +1,25 @@
+name: Mobile APK
+on:
+  workflow_dispatch:
+  push:
+    paths: ["packages/mobile/**"]
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - name: Android iskeleti + yamalar
+        shell: pwsh
+        run: ./setup.ps1
+      - run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: batak-apk
+          path: packages/mobile/build/app/outputs/flutter-apk/app-release.apk
